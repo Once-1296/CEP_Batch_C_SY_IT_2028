@@ -1,0 +1,27 @@
+{
+    "drug_condition_interactions": [
+        {
+            "salt": "Fexofenadine",
+            "condition": "Kidney Disease",
+            "severity": "Red",
+            "alert_message": "CRITICAL: Severe renal impairment detected. Fexofenadine dosage needs strict adjustment or avoidance to prevent toxicity.",
+            "suggested_alternative_class": "RESPIRATORY"
+        }
+    ],
+    "drug_drug_interactions": [
+        {
+            "salt_a": "Amoxycillin",
+            "salt_b": "Methotrexate",
+            "severity": "Red",
+            "alert_message": "CRITICAL: Amoxycillin can decrease the renal excretion of Methotrexate, potentially leading to fatal toxic levels.",
+            "suggested_alternative_class": "ANTI INFECTIVES"
+        },
+        {
+            "salt_a": "Ambroxol",
+            "salt_b": "Antibiotics",
+            "severity": "Yellow",
+            "alert_message": "NOTE: Ambroxol increases antibiotic concentration in lung tissue. Usually beneficial, but monitor patient.",
+            "suggested_alternative_class": null
+        }
+    ]
+}
