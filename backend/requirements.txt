@@ -1,0 +1,6 @@
+pandas
+fastapi
+spacy
+pydantic
+fuzzywuzzy
+uvicorn

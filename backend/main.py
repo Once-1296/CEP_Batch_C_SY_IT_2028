@@ -104,16 +104,16 @@ async def check_drug_safety(req: DrugCheckRequest):
     patient = mock_patients.get(req.patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient ABHA ID not found")
-
+    # print(patient)
     # Step B: Normalize & Resolve Input
     clean_query = normalize_input(req.pharmacist_query)
     resolved_drug = resolve_entity(clean_query)
-    
+    # print(clean_query)
     if not resolved_drug:
         return {"status": "error", "message": "Could not confidently identify the medicine."}
 
     target_salt = resolved_drug["generic_salt"]
-    
+    # print(target_salt)
     # Step C: The Safety Engine (Cross-referencing rules)
     alert = {
         "severity_tier": "Green", # Default to safe

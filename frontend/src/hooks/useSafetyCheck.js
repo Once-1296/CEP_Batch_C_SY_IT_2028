@@ -26,7 +26,7 @@ export function useSafetyCheck() {
 
   const runCheck = useCallback(async (rawInput, patientId) => {
     if (!rawInput.trim()) return
-
+    // console.log(rawInput.trim())
     // Reset state
     setResult(null)
     setApiError(null)
