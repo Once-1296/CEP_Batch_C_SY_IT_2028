@@ -16,13 +16,15 @@ export default function Header({ user, onLogout }) {
       </div>
 
       <div className="flex items-center gap-3">
-        {/* ABDM status */}
+        {/* ABDM status (Hidden as per user request since not currently connected) */}
+        {/*
         <div className="flex items-center gap-1.5 text-[12px] font-medium text-emerald-400
                         bg-emerald-950/40 border border-emerald-800/30 px-3 py-1.5 rounded-full">
           <span className="w-1.5 h-1.5 rounded-full bg-[#1D9E75]"
             style={{ animation: 'pulse-dot 2s infinite' }} />
           ABDM Sandbox Connected
         </div>
+        */}
 
         {/* Logged in user */}
         {user && (

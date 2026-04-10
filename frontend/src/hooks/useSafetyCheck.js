@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react'
-import { PIPELINE_STEPS } from '../data/mockData'
 
 // ── FastAPI backend URL ───────────────────────────────────────────────────────
 const API_BASE = 'http://localhost:8000'
@@ -31,32 +30,40 @@ export function useSafetyCheck() {
     setResult(null)
     setApiError(null)
     setShowSteps(true)
-    setSteps(PIPELINE_STEPS.map(() => 'wait'))
+    
+    // CHANGED: Define exactly the 5 steps matching the new backend logic per ADDENDUM 6
+    const FRONTEND_STEPS = [
+      'Input normalization & error correction',
+      'Brand-to-generic mapping',
+      'Patient record retrieval',
+      'DDI check',
+      'Risk output'
+    ]
+    setSteps(FRONTEND_STEPS.map(() => 'wait'))
     setLoading(true)
 
     const updateStep = (i, state) =>
       setSteps((prev) => prev.map((s, idx) => (idx === i ? state : s)))
 
-    // Animate first 5 steps while API call is in flight
+    // Animate first 4 steps while API call is in flight
     const stepMsgs = [
       'Normalizing input with SciSpacy NLP…',
       'Mapping brand to generic salt via FuzzyWuzzy…',
-      'Fetching ABDM FHIR records via HIU API…',
-      'Running DDI cross-reference query…',
-      'Checking drug-condition contraindications…',
+      'Retrieving patient data from Supabase…',
+      'Running fuzzy DDI cross-reference query…',
     ]
 
-    // Animate steps 0-4 with delays
-    for (let i = 0; i < 5; i++) {
-      setLoadingMsg(stepMsgs[i])
-      updateStep(i, 'active')
-      await delay(400)
-      updateStep(i, 'done')
+    // Animate steps 0-3 with delays
+    for (let i = 0; i < 4; i++) {
+        setLoadingMsg(stepMsgs[i])
+        updateStep(i, 'active')
+        await delay(400)
+        updateStep(i, 'done')
     }
 
-    // Step 5 — actual API call happens here
+    // Step 4 — actual API call happens here
     setLoadingMsg('Stratifying risk & preparing output…')
-    updateStep(5, 'active')
+    updateStep(4, 'active')
 
     try {
       const response = await fetch(`${API_BASE}/api/check-drug`, {
@@ -74,7 +81,7 @@ export function useSafetyCheck() {
       }
 
       const data = await response.json()
-      updateStep(5, 'done')
+      updateStep(4, 'done')
       setLoading(false)
 
       // Map backend severity_tier → frontend severity
@@ -103,7 +110,7 @@ export function useSafetyCheck() {
       })
 
     } catch (err) {
-      updateStep(5, 'done')
+      updateStep(4, 'done')
       setLoading(false)
 
       // Check if it's a network error (backend not running)
