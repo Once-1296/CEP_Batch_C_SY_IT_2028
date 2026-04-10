@@ -3,7 +3,6 @@ import React from 'react'
 const TABS = [
   { id: 'dashboard',    label: 'Pharmacist Dashboard' },
   { id: 'patient',      label: 'Patient Profile' },
-  { id: 'schema',       label: 'Database Schema' },
   { id: 'substitution', label: 'Safety Swap' },
 ]
 

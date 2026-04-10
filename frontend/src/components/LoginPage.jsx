@@ -1,15 +1,19 @@
 import React, { useState } from 'react'
 
+// ── CHANGED: Login page rewritten — signup removed entirely ────────────────
+// Single clean login form: username + password
+// Role determined from backend response — no UI role selector
+// On success: stores { token, role, name, username } in localStorage('ag_user')
+
 const API_BASE = 'http://localhost:8000'
 
 export default function LoginPage({ onLogin }) {
-  const [mode, setMode]         = useState('login') // 'login' | 'signup'
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState(null)
-  const [success, setSuccess]   = useState(null)
 
+  // CHANGED: Removed mode/signup state entirely — login only
   const handleSubmit = async () => {
     if (!username.trim() || !password.trim()) {
       setError('Please enter both username and password.')
@@ -17,28 +21,29 @@ export default function LoginPage({ onLogin }) {
     }
     setLoading(true)
     setError(null)
-    setSuccess(null)
 
     try {
-      const endpoint = mode === 'login' ? '/api/login' : '/api/signup'
-      const res = await fetch(`${API_BASE}${endpoint}`, {
+      // CHANGED: Only /api/login — no /api/signup
+      const res = await fetch(`${API_BASE}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: username.trim(), password }),
       })
       const data = await res.json()
 
-      if (!res.ok) throw new Error(data.detail || 'Request failed')
+      if (!res.ok) throw new Error(data.detail || 'Login failed')
 
-      if (mode === 'signup') {
-        setSuccess('Account created! You can now log in.')
-        setMode('login')
-      } else {
-        // Store token and proceed
-        localStorage.setItem('ag_token', data.token)
-        localStorage.setItem('ag_user', username)
-        onLogin(username)
+      // CHANGED: Store role and name alongside token in localStorage
+      const userData = {
+        token: data.token,
+        role: data.role,           // 'admin' | 'pharmacist'
+        name: data.name,
+        username: username.trim(),
       }
+      localStorage.setItem('ag_user', JSON.stringify(userData))
+
+      // CHANGED: Pass full user object to parent for role-based routing
+      onLogin(userData)
     } catch (err) {
       if (err.message === 'Failed to fetch') {
         setError('Cannot connect to backend. Make sure FastAPI is running: uvicorn main:app --reload')
@@ -67,17 +72,12 @@ export default function LoginPage({ onLogin }) {
           </div>
         </div>
 
-        {/* Card */}
+        {/* CHANGED: Single login card — no signup tab toggle */}
         <div className="bg-[#161b22] border border-[#21262d] rounded-xl p-6">
-          {/* Tab toggle */}
-          <div className="flex bg-[#0d1117] border border-[#21262d] rounded-lg p-1 mb-6 gap-1">
-            {['login', 'signup'].map((m) => (
-              <button key={m} onClick={() => { setMode(m); setError(null); setSuccess(null) }}
-                className={`flex-1 py-2 rounded-md text-[13px] font-medium transition-all
-                  ${mode === m ? 'bg-[#1D9E75] text-white' : 'text-[#8b949e] hover:text-[#e2e8f0]'}`}>
-                {m === 'login' ? 'Login' : 'Sign Up'}
-              </button>
-            ))}
+          {/* CHANGED: Simple "Sign In" header instead of tab toggle */}
+          <div className="text-center mb-6">
+            <div className="text-[15px] font-semibold text-[#e2e8f0]">Sign In</div>
+            <div className="text-[12px] text-[#484f58] mt-1">Admin or Pharmacist credentials</div>
           </div>
 
           {/* Form */}
@@ -104,20 +104,16 @@ export default function LoginPage({ onLogin }) {
                            focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20 transition-all" />
             </div>
 
+            {/* CHANGED: Inline error display — no success message (no signup) */}
             {error && (
               <div className="bg-red-950/40 border border-red-800/40 rounded-lg px-3 py-2.5 text-[12px] text-red-400">
                 {error}
               </div>
             )}
-            {success && (
-              <div className="bg-emerald-950/40 border border-emerald-800/40 rounded-lg px-3 py-2.5 text-[12px] text-emerald-400">
-                {success}
-              </div>
-            )}
 
             <button onClick={handleSubmit} disabled={loading}
               className="w-full btn btn-primary py-3 text-[14px] disabled:opacity-50 disabled:cursor-not-allowed mt-2">
-              {loading ? 'Please wait…' : mode === 'login' ? 'Login as Pharmacist' : 'Create Account'}
+              {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </div>
         </div>

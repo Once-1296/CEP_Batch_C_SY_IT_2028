@@ -4,3 +4,6 @@ spacy
 pydantic
 fuzzywuzzy
 uvicorn
+supabase
+python-dotenv
+python-levenshtein
