@@ -2,7 +2,7 @@ from fuzzywuzzy import process
 
 from app.data.loaders import get_brand_name_list, get_brand_to_salt
 from app.nlp.normalizer import normalize_input
-from app.utils.text import strip_dosage
+from app.config.settings import strip_dosage
 
 
 def resolve_entity(clean_query: str):

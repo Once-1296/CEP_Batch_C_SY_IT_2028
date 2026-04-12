@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.controllers.auth_controller import login
-from app.schemas.auth import LoginRequest
+from app.controllers.schema import LoginRequest
 
 
 router = APIRouter()

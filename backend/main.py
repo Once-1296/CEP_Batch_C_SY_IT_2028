@@ -23,6 +23,7 @@ from app.routes.safety import router as safety_router
 
 app = FastAPI(title="Ayush-Guard API")
 
+# Pura middleware
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=CORS_ALLOW_ORIGINS,
@@ -30,13 +31,14 @@ app.add_middleware(
 	allow_methods=CORS_ALLOW_METHODS,
 	allow_headers=CORS_ALLOW_HEADERS,
 )
-
 register_error_handlers(app)
 register_request_context_middleware(app)
 register_logging_middleware(app)
 register_transform_middleware(app)
 register_auth_middleware(app)
+# Yaha tak.
 
+# DB Connection.
 initialize_supabase_clients()
 
 print("Loading datasets and models...")
@@ -46,6 +48,7 @@ try:
 except Exception as e:
 	print(f"Startup Error: {e}. Did you run setup_data.py and download spaCy model?")
 
+# Routing.
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(patients_router)

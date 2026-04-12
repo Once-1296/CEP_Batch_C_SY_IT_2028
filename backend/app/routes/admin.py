@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.controllers.admin_controller import add_admin, add_pharmacist
-from app.schemas.admin import AddAdminRequest, AddPharmacistRequest
+from app.controllers.schema import AddAdminRequest, AddPharmacistRequest
 
 
 router = APIRouter()

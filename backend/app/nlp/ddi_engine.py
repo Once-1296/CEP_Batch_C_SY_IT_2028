@@ -1,7 +1,7 @@
 from fuzzywuzzy import fuzz, process
 
 from app.data.loaders import get_ddi_by_drug_a, get_ddi_by_drug_b
-from app.utils.text import strip_dosage
+from app.config.settings import strip_dosage
 
 
 def get_ddi_match_alert(target_salt: str, patient_salts: list[str]):

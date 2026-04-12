@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.controllers.safety_controller import check_drug_safety
-from app.schemas.safety import DrugCheckRequest
+from app.controllers.schema import DrugCheckRequest
 
 
 router = APIRouter()

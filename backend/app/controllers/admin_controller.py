@@ -1,8 +1,7 @@
 from fastapi import HTTPException
-
 from app.config.supabase import get_supabase, get_supabase_admin
-from app.schemas.admin import AddAdminRequest, AddPharmacistRequest
-from app.utils.security import hash_password
+from app.controllers.schema import AddAdminRequest, AddPharmacistRequest
+from app.config.settings import hash_password
 
 
 async def add_pharmacist(req: AddPharmacistRequest):

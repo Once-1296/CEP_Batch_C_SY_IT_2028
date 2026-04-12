@@ -1,8 +1,8 @@
 from fastapi import HTTPException
 
 from app.config.supabase import get_supabase
-from app.schemas.auth import LoginRequest
-from app.utils.security import hash_password
+from app.controllers.schema import LoginRequest
+from app.config.settings import hash_password
 
 
 async def login(req: LoginRequest):

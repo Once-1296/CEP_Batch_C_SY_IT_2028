@@ -4,7 +4,7 @@ from app.config.supabase import get_supabase
 from app.nlp.ddi_engine import get_ddi_match_alert
 from app.nlp.normalizer import normalize_input
 from app.nlp.resolver import resolve_entity, resolve_patient_meds_to_salts
-from app.schemas.safety import DrugCheckRequest
+from app.controllers.schema import DrugCheckRequest
 
 
 async def check_drug_safety(req: DrugCheckRequest):

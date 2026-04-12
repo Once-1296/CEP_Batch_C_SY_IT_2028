@@ -1,8 +1,8 @@
 from fastapi import HTTPException
 
 from app.config.supabase import get_supabase
-from app.schemas.patient import CreatePatientRequest, UpdatePatientRequest, VerifyPatientRequest
-from app.utils.security import hash_password
+from app.controllers.schema import CreatePatientRequest, UpdatePatientRequest, VerifyPatientRequest
+from app.config.settings import hash_password
 
 
 async def list_patients():

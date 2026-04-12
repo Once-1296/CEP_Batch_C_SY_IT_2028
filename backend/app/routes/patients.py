@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.controllers.patient_controller import create_patient, list_patients, update_patient, verify_patient
-from app.schemas.patient import CreatePatientRequest, UpdatePatientRequest, VerifyPatientRequest
+from app.controllers.schema import CreatePatientRequest, UpdatePatientRequest, VerifyPatientRequest
 
 
 router = APIRouter()
