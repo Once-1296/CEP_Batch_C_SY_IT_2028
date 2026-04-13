@@ -7,6 +7,7 @@ from app.config.settings import (
 	CORS_ALLOW_METHODS,
 	CORS_ALLOW_ORIGINS,
 )
+from app.config.abdm import close_abdm_http_client, initialize_abdm_http_client
 from app.config.supabase import initialize_supabase_clients
 from app.config.data import initialize_csv_data
 from app.middleware.auth import register_auth_middleware
@@ -15,6 +16,7 @@ from app.middleware.logging import register_logging_middleware
 from app.middleware.request_context import register_request_context_middleware
 from app.middleware.transform import register_transform_middleware
 from app.nlp.pipeline import initialize_nlp_model
+from app.routes.abdm import router as abdm_router
 from app.routes.admin import router as admin_router
 from app.routes.auth import router as auth_router
 from app.routes.patients import router as patients_router
@@ -38,6 +40,11 @@ register_transform_middleware(app)
 register_auth_middleware(app)
 # Yaha tak.
 
+# ABDM gateway HTTP client lifecycle. This keeps async Gateway calls on a
+# shared client instead of creating a new TCP session for every webhook.
+app.add_event_handler("startup", initialize_abdm_http_client)
+app.add_event_handler("shutdown", close_abdm_http_client)
+
 # DB Connection.
 initialize_supabase_clients()
 
@@ -53,3 +60,4 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(patients_router)
 app.include_router(safety_router)
+app.include_router(abdm_router)
