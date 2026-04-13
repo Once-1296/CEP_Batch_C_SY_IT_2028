@@ -1,6 +1,6 @@
 from fuzzywuzzy import fuzz, process
 
-from app.data.loaders import get_ddi_by_drug_a, get_ddi_by_drug_b
+from app.config.data import get_ddi_by_drug_a, get_ddi_by_drug_b
 from app.config.settings import strip_dosage
 
 

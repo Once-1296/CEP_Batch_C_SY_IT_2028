@@ -1,6 +1,6 @@
 from fuzzywuzzy import process
 
-from app.data.loaders import get_brand_name_list, get_brand_to_salt
+from app.config.data import get_brand_name_list, get_brand_to_salt
 from app.nlp.normalizer import normalize_input
 from app.config.settings import strip_dosage
 

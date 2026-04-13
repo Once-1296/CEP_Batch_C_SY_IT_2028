@@ -8,7 +8,7 @@ from app.config.settings import (
 	CORS_ALLOW_ORIGINS,
 )
 from app.config.supabase import initialize_supabase_clients
-from app.data.loaders import initialize_csv_data
+from app.config.data import initialize_csv_data
 from app.middleware.auth import register_auth_middleware
 from app.middleware.error_handler import register_error_handlers
 from app.middleware.logging import register_logging_middleware
