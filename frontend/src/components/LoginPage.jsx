@@ -5,11 +5,12 @@ import React, { useState } from 'react'
 // Role determined from backend response — no UI role selector
 // On success: stores { token, role, name, username } in localStorage('ag_user')
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 export default function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [role, setRole]         = useState('pharmacist') // Default to pharmacist
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState(null)
 
@@ -36,10 +37,12 @@ export default function LoginPage({ onLogin }) {
       // CHANGED: Store role and name alongside token in localStorage
       const userData = {
         token: data.token,
-        role: data.role,           // 'admin' | 'pharmacist'
+        role: data.role,           // 'admin' | 'pharmacist' | 'patient'
+        id: data.id,
         name: data.name,
         username: username.trim(),
       }
+
       localStorage.setItem('ag_user', JSON.stringify(userData))
 
       // CHANGED: Pass full user object to parent for role-based routing
@@ -77,17 +80,17 @@ export default function LoginPage({ onLogin }) {
           {/* CHANGED: Simple "Sign In" header instead of tab toggle */}
           <div className="text-center mb-6">
             <div className="text-[15px] font-semibold text-[#e2e8f0]">Sign In</div>
-            <div className="text-[12px] text-[#484f58] mt-1">Admin or Pharmacist credentials</div>
+            <div className="text-[12px] text-[#484f58] mt-1">Admin, Pharmacist (Username) or Patient (ABHA ID)</div>
           </div>
 
           {/* Form */}
           <div className="space-y-3">
             <div>
               <label className="text-[11px] font-bold text-[#484f58] uppercase tracking-widest block mb-1.5">
-                Username
+                Username / ABHA ID
               </label>
               <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username"
+                placeholder="Enter username or ABHA ID"
                 className="w-full px-3.5 py-2.5 border border-[#21262d] rounded-lg text-[14px] outline-none
                            bg-[#0d1117] text-[#e2e8f0] placeholder-[#484f58]
                            focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20 transition-all" />

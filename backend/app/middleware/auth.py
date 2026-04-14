@@ -45,6 +45,11 @@ def register_auth_middleware(app: FastAPI) -> None:
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
         path = request.url.path
+        method = request.method
+
+        # Allow CORS preflight requests to pass through without auth checks
+        if method == "OPTIONS":
+            return await call_next(request)
 
         if _is_public_path(path):
             return await call_next(request)
@@ -65,28 +70,40 @@ def register_auth_middleware(app: FastAPI) -> None:
             request.state.user = {
                 "username": username,
                 "role": "admin",
+                "id": admin_res.data[0]["id"],
                 "verified": True,
             }
             return await call_next(request)
 
-        pharmacist_res = supabase.table("pharmacists").select("id, username, status").eq("username", username).execute()
-        if not pharmacist_res.data or len(pharmacist_res.data) == 0:
-            return JSONResponse(status_code=401, content={"detail": "Invalid user token"})
+        pharmacist_res = supabase.table("pharmacists").select("id, username").eq("username", username).execute()
+        if pharmacist_res.data and len(pharmacist_res.data) > 0:
+            pharmacist = pharmacist_res.data[0]
 
-        pharmacist = pharmacist_res.data[0]
-        status_value = str(pharmacist.get("status", "")).strip().lower()
-        is_verified = status_value in {"verified", "active", "approved", "true", "1"} or status_value == ""
+            request.state.user = {
+                "username": username,
+                "role": "pharmacist",
+                "id": pharmacist["id"],
+                "verified": True,
+            }
 
-        request.state.user = {
-            "username": username,
-            "role": "pharmacist",
-            "verified": is_verified,
-        }
+            if _is_admin_path(path):
+                return JSONResponse(status_code=403, content={"detail": "Admin access required"})
 
-        if _is_admin_path(path):
-            return JSONResponse(status_code=403, content={"detail": "Admin access required"})
+            return await call_next(request)
 
-        if _is_pharmacist_protected_path(path) and not is_verified:
-            return JSONResponse(status_code=403, content={"detail": "Verified pharmacist access required"})
+        # If not admin or pharmacist, check patients (using ABHA ID as username)
+        patient_res = supabase.table("patients").select("id, abha_id").eq("abha_id", username).execute()
+        if patient_res.data and len(patient_res.data) > 0:
+            patient = patient_res.data[0]
+            request.state.user = {
+                "username": username,
+                "role": "patient",
+                "id": patient["id"],
+                "verified": True,
+            }
+            if _is_admin_path(path):
+                return JSONResponse(status_code=403, content={"detail": "Admin access required"})
+            
+            return await call_next(request)
 
-        return await call_next(request)
+        return JSONResponse(status_code=401, content={"detail": "Invalid user token"})

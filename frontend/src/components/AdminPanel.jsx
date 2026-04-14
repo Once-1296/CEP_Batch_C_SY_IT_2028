@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 // Two side-by-side forms: Add Pharmacist and Add Admin
 // No table/list of existing users — prototype only
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 export default function AdminPanel() {
   // ── Add Pharmacist form state ──
@@ -21,6 +21,16 @@ export default function AdminPanel() {
   const [adminPassword, setAdminPassword] = useState('')
   const [adminLoading, setAdminLoading] = useState(false)
   const [adminMsg, setAdminMsg]         = useState(null)
+
+  // ── Add Patient form state ──
+  const [patientName, setPatientName] = useState('')
+  const [patientPhone, setPatientPhone] = useState('')
+  const [patientPassword, setPatientPassword] = useState('')
+  const [patientAddedBy, setPatientAddedBy] = useState('') // pharmacist id
+  const [patientMedications, setPatientMedications] = useState('') // comma-separated
+  const [patientConditions, setPatientConditions] = useState('') // comma-separated
+  const [patientLoading, setPatientLoading] = useState(false)
+  const [patientMsg, setPatientMsg] = useState(null)
 
   // ── Submit: Add Pharmacist ──
   const handleAddPharmacist = async () => {
@@ -83,6 +93,48 @@ export default function AdminPanel() {
     }
   }
 
+  // ── Submit: Add Patient ──
+  const handleAddPatient = async () => {
+    if (!patientName.trim() || !patientPhone.trim() || !patientPassword.trim() || !patientAddedBy.trim()) {
+      setPatientMsg({ type: 'error', text: 'Name, phone, password and registered-by (pharmacist id) are required.' })
+      return
+    }
+    setPatientLoading(true)
+    setPatientMsg(null)
+    try {
+      const meds = patientMedications.split(',').map(s => s.trim()).filter(Boolean)
+      const conds = patientConditions.split(',').map(s => s.trim()).filter(Boolean)
+      const addedByVal = Number(patientAddedBy.trim())
+
+      const res = await fetch(`${API_BASE}/api/admin/add-patient`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: patientName.trim(),
+          phone: patientPhone.trim(),
+          password: patientPassword.trim(),
+          current_medications: meds,
+          current_conditions: conds,
+          added_by: isNaN(addedByVal) ? patientAddedBy.trim() : addedByVal,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Failed to add patient')
+      setPatientMsg({ type: 'success', text: data.message || 'Patient added successfully!' })
+      // Clear form on success
+      setPatientName('')
+      setPatientPhone('')
+      setPatientPassword('')
+      setPatientAddedBy('')
+      setPatientMedications('')
+      setPatientConditions('')
+    } catch (err) {
+      setPatientMsg({ type: 'error', text: err.message })
+    } finally {
+      setPatientLoading(false)
+    }
+  }
+
   // ── Reusable message banner ──
   const MsgBanner = ({ msg }) => {
     if (!msg) return null
@@ -130,8 +182,8 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* CHANGED: Two side-by-side forms */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+  {/* CHANGED: Three side-by-side forms (Admin, Pharmacist, Patient) */}
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
 
         {/* ── Add Pharmacist Card ── */}
         <div className="card">
@@ -170,6 +222,29 @@ export default function AdminPanel() {
                 {adminLoading ? 'Adding…' : 'Add Admin'}
               </button>
               <MsgBanner msg={adminMsg} />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Add Patient Card ── */}
+        <div className="card">
+          <div className="card-body">
+            <div className="section-label">Add New Patient</div>
+            <div className="space-y-3">
+              <Field label="Full Name" value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="e.g. Ravi Kumar" />
+              <Field label="Phone" value={patientPhone} onChange={e => setPatientPhone(e.target.value)} placeholder="e.g. 9876543210" />
+              <Field label="Password" type="password" value={patientPassword} onChange={e => setPatientPassword(e.target.value)} placeholder="Enter password" />
+              <Field label="Registered By (Pharmacist ID)" value={patientAddedBy} onChange={e => setPatientAddedBy(e.target.value)} placeholder="Enter pharmacist id (numeric)" />
+              <Field label="Current Medications" value={patientMedications} onChange={e => setPatientMedications(e.target.value)} placeholder="Comma-separated, e.g. aspirin, metformin" />
+              <Field label="Current Conditions" value={patientConditions} onChange={e => setPatientConditions(e.target.value)} placeholder="Comma-separated, e.g. diabetes, hypertension" />
+              <button
+                onClick={handleAddPatient}
+                disabled={patientLoading}
+                className="w-full btn btn-primary py-3 text-[14px] disabled:opacity-50 disabled:cursor-not-allowed mt-1"
+              >
+                {patientLoading ? 'Adding…' : 'Add Patient'}
+              </button>
+              <MsgBanner msg={patientMsg} />
             </div>
           </div>
         </div>

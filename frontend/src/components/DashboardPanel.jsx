@@ -5,10 +5,9 @@ import { useSafetyCheck } from '../hooks/useSafetyCheck'
 // CHANGED: Removed import { PATIENTS } from '../data/mockData'
 // Patients now fetched from GET /api/patients
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
-// Demo drugs that work with backend medicines_cleaned.csv
-const DEMO_DRUGS = ['Augmentin 625', 'Allegra 120mg', 'Ascoril LS', 'Azithral 500', 'Ambroxol']
+
 
 // CHANGED: ADDENDUM 6 - Override PipelineSteps since original file is untouchable
 const FRONTEND_STEPS = [
@@ -56,6 +55,8 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
   const [input, setInput]         = useState('')
   // CHANGED: patientId starts as empty — will be set after patients are fetched
   const [patientId, setPatientId] = useState('')
+  const [userRole, setUserRole] = useState('')
+  const [userId, setUserId] = useState('')
   const { loading, loadingMsg, steps, showSteps, result, apiError, runCheck, clear } = useSafetyCheck()
 
   // CHANGED: Fetch patients from Supabase via GET /api/patients
@@ -65,7 +66,22 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
   useEffect(() => {
     const fetchPatients = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/patients`)
+        const savedUser = localStorage.getItem('ag_user')
+        const parsed = savedUser ? JSON.parse(savedUser) : null
+        const token = parsed ? parsed.token : ''
+        // attempt to extract user role/id from saved object
+        if (parsed) {
+          // support either { user: { id, role } , token } or { id, role, token }
+          const maybeUser = parsed.user || parsed
+          setUserRole(maybeUser.role || '')
+          setUserId(String(maybeUser.id || ''))
+        }
+        
+        const res = await fetch(`${API_BASE}/api/patients`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
         const data = await res.json()
         const list = data.patients || []
         setPatients(list)
@@ -82,6 +98,32 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
     }
     fetchPatients()
   }, [])
+
+  // ── Pharmacist: request access to selected patient ──
+  const handleRequestAccess = async () => {
+    try {
+      const savedUser = localStorage.getItem('ag_user')
+      const parsed = savedUser ? JSON.parse(savedUser) : null
+      const token = parsed ? parsed.token : ''
+      // pharmacist id fallback to stored userId
+      const pharmacistId = parsed && (parsed.user?.id || parsed.id) ? (parsed.user?.id || parsed.id) : userId
+      if (!patientId) return alert('Select a patient first')
+
+      const res = await fetch(`${API_BASE}/api/patients/request-access`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ patient_id: patientId, pharmacist_id: pharmacistId })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'Failed to request access')
+      alert(data.status === 'exists' ? 'A request already exists.' : 'Access request sent.')
+    } catch (err) {
+      alert(err.message || 'Request failed')
+    }
+  }
 
   // CHANGED: Pass Supabase patient.id (as string) to the safety check
   const handleCheck = () => runCheck(input, patientId)
@@ -115,7 +157,7 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
                          bg-[#0d1117] text-[#e2e8f0] placeholder-[#484f58]
                          focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20 transition-all"
             />
-            <button onClick={handleCheck} disabled={loading}
+            <button onClick={handleCheck} disabled={loading || selectedPatient?.access_status !== 'ACCEPTED'}
               className="btn btn-primary whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? 'Checking…' : 'Run safety check'}
             </button>
@@ -143,44 +185,46 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
                 ))}
               </select>
             )}
-            <button onClick={onViewPatient} className="btn btn-blue whitespace-nowrap">
-              View patient profile
-            </button>
+            <div className="flex gap-2">
+              <button onClick={onViewPatient} className="btn btn-blue whitespace-nowrap">
+                View patient profile
+              </button>
+              {userRole === 'pharmacist' && (
+                <button onClick={handleRequestAccess} className="btn btn-primary whitespace-nowrap">
+                  Request access
+                </button>
+              )}
+            </div>
           </div>
 
           {/* CHANGED: Patient quick info strip using Supabase fields */}
           {selectedPatient && (
             <div className="bg-[#0d1117] border border-[#21262d] rounded-lg px-3.5 py-2.5 mb-4">
-              <div className="flex flex-wrap gap-4 text-[12px]">
-                <span className="text-[#8b949e]">Patient: <span className="text-[#e2e8f0] font-medium">{selectedPatient.name}</span></span>
-                <span className="text-[#8b949e]">Phone: <span className="text-[#e2e8f0] font-medium">{selectedPatient.phone || '—'}</span></span>
-                {/* CHANGED: Use current_conditions instead of conditions */}
-                <span className="text-[#8b949e]">Conditions: <span className="text-amber-400 font-medium">
-                  {(selectedPatient.current_conditions || []).join(', ') || 'None'}
-                </span></span>
-                {/* CHANGED: Use current_medications instead of meds */}
-                <span className="text-[#8b949e]">Current meds: <span className="text-blue-400 font-medium">
-                  {(selectedPatient.current_medications || []).join(', ') || 'None'}
-                </span></span>
-              </div>
+              {selectedPatient.access_status === 'ACCEPTED' ? (
+                <div className="flex flex-wrap gap-4 text-[12px]">
+                  <span className="text-[#8b949e]">Patient: <span className="text-[#e2e8f0] font-medium">{selectedPatient.name}</span></span>
+                  <span className="text-[#8b949e]">Phone: <span className="text-[#e2e8f0] font-medium">{selectedPatient.phone || '—'}</span></span>
+                  <span className="text-[#8b949e]">Conditions: <span className="text-amber-400 font-medium">
+                    {(selectedPatient.current_conditions || []).join(', ') || 'None'}
+                  </span></span>
+                  <span className="text-[#8b949e]">Current meds: <span className="text-blue-400 font-medium">
+                    {(selectedPatient.current_medications || []).join(', ') || 'None'}
+                  </span></span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-[12px]">
+                  <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                  <span className="text-amber-400 font-medium">RESTRICTED ACCESS:</span>
+                  <span className="text-[#8b949e]">Full records hidden. Current status: </span>
+                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[10px] font-bold uppercase tracking-wider">
+                    {selectedPatient.access_status || 'NONE'}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Demo quick links — unchanged */}
-          {selectedPatient && (
-            <p className="text-[12px] text-[#484f58]">
-              Try with <span className="text-amber-400 font-medium">{selectedPatient.name}</span>:{' '}
-              {DEMO_DRUGS.map((name, i) => (
-                <React.Fragment key={name}>
-                  <button onClick={() => handleDemo(name)}
-                    className="text-emerald-400 underline hover:text-emerald-300 transition-colors">
-                    {name}
-                  </button>
-                  {i < DEMO_DRUGS.length - 1 && <span className="mx-1 text-[#30363d]">·</span>}
-                </React.Fragment>
-              ))}
-            </p>
-          )}
+
         </div>
       </div>
 

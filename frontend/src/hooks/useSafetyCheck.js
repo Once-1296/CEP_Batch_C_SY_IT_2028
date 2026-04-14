@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 
 // ── FastAPI backend URL ───────────────────────────────────────────────────────
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -16,12 +16,12 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms))
  * severity_tier values from backend: "Green" | "Yellow" | "Red"
  */
 export function useSafetyCheck() {
-  const [loading, setLoading]       = useState(false)
+  const [loading, setLoading] = useState(false)
   const [loadingMsg, setLoadingMsg] = useState('')
-  const [steps, setSteps]           = useState([])
-  const [result, setResult]         = useState(null)
-  const [showSteps, setShowSteps]   = useState(false)
-  const [apiError, setApiError]     = useState(null)
+  const [steps, setSteps] = useState([])
+  const [result, setResult] = useState(null)
+  const [showSteps, setShowSteps] = useState(false)
+  const [apiError, setApiError] = useState(null)
 
   const runCheck = useCallback(async (rawInput, patientId) => {
     if (!rawInput.trim()) return
@@ -30,7 +30,7 @@ export function useSafetyCheck() {
     setResult(null)
     setApiError(null)
     setShowSteps(true)
-    
+
     // CHANGED: Define exactly the 5 steps matching the new backend logic per ADDENDUM 6
     const FRONTEND_STEPS = [
       'Input normalization & error correction',
@@ -55,10 +55,10 @@ export function useSafetyCheck() {
 
     // Animate steps 0-3 with delays
     for (let i = 0; i < 4; i++) {
-        setLoadingMsg(stepMsgs[i])
-        updateStep(i, 'active')
-        await delay(400)
-        updateStep(i, 'done')
+      setLoadingMsg(stepMsgs[i])
+      updateStep(i, 'active')
+      await delay(400)
+      updateStep(i, 'done')
     }
 
     // Step 4 — actual API call happens here
@@ -66,9 +66,15 @@ export function useSafetyCheck() {
     updateStep(4, 'active')
 
     try {
+      const savedUser = localStorage.getItem('ag_user')
+      const token = savedUser ? JSON.parse(savedUser).token : ''
+
       const response = await fetch(`${API_BASE}/api/check-drug`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           pharmacist_query: rawInput.trim(),
           patient_id: patientId,
@@ -87,22 +93,22 @@ export function useSafetyCheck() {
       // Map backend severity_tier → frontend severity
       // Backend uses: "Green" | "Yellow" | "Red"
       const severityMap = {
-        Red:    'critical',
+        Red: 'critical',
         Yellow: 'moderate',
-        Green:  'safe',
+        Green: 'safe',
       }
 
       setResult({
         // resolved drug info from backend
         drug: {
-          brand:  data.resolved_data?.brand_matched  || rawInput,
-          salt:   data.resolved_data?.generic_salt   || 'Unknown',
-          cat:    data.resolved_data?.therapeutic_class || 'Unknown',
-          score:  data.resolved_data?.match_score    || 0,
+          brand: data.resolved_data?.brand_matched || rawInput,
+          salt: data.resolved_data?.generic_salt || 'Unknown',
+          cat: data.resolved_data?.therapeutic_class || 'Unknown',
+          score: data.resolved_data?.match_score || 0,
         },
-        severity:    severityMap[data.severity_tier] || 'safe',
-        message:     data.message,
-        substitute:  data.suggested_alternative
+        severity: severityMap[data.severity_tier] || 'safe',
+        message: data.message,
+        substitute: data.suggested_alternative
           ? { name: data.suggested_alternative, brands: data.suggested_alternative, reason: data.message }
           : null,
         // raw backend response for debugging

@@ -32,6 +32,20 @@ async def login(req: LoginRequest):
                 "token": f"fake-jwt-{req.username}",
                 "role": "pharmacist",
                 "name": pharmacist["name"],
+                "id": pharmacist["id"],
+            }
+
+    # Patient login: use abha_id as username
+    patient_res = supabase.table("patients").select("id, name, abha_id, password").eq("abha_id", req.username).execute()
+    if patient_res.data and len(patient_res.data) > 0:
+        patient = patient_res.data[0]
+        if patient["password"] == hashed:
+            return {
+                "status": "success",
+                "token": f"fake-jwt-{req.username}",
+                "role": "patient",
+                "name": patient["name"],
+                "id": patient["id"],
             }
 
     raise HTTPException(status_code=401, detail="Invalid username or password")

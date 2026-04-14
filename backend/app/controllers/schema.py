@@ -7,6 +7,7 @@ class AddPharmacistRequest(BaseModel):
     username: str
     password: str
     phone: str
+    license_number: str
 
 
 class AddAdminRequest(BaseModel):
@@ -22,6 +23,7 @@ class LoginRequest(BaseModel):
 
 class CreatePatientRequest(BaseModel):
     name: str
+    abha_id: str
     phone: str
     password: str
     current_medications: List[str] = []
@@ -37,12 +39,21 @@ class UpdatePatientRequest(BaseModel):
 
 
 class VerifyPatientRequest(BaseModel):
-    patient_id: int
+    patient_id: str
     password: str
 
 class DrugCheckRequest(BaseModel):
     pharmacist_query: str
     patient_id: str
+
+
+class RequestAccessRequest(BaseModel):
+    patient_id: str
+
+
+class RespondAccessRequest(BaseModel):
+    request_id: str
+    status: str  # 'ACCEPTED' or 'REJECTED'
 
 
 class ABDMConsentInitRequest(BaseModel):

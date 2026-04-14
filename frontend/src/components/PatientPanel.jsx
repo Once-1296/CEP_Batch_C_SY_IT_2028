@@ -4,7 +4,7 @@ import AlertBox from './AlertBox'
 // CHANGED: Removed import { PATIENTS } from '../data/mockData'
 // Patient data now comes from Supabase via API
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 export default function PatientPanel({ activePatientId, loggedInUser }) {
   // ── Patient list state ──
@@ -40,13 +40,19 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
   // ── Fetch patients on mount ──
   const fetchPatients = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/patients`)
+      const savedUser = localStorage.getItem('ag_user')
+      const token = savedUser ? JSON.parse(savedUser).token : ''
+
+      const res = await fetch(`${API_BASE}/api/patients`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
       const data = await res.json()
       const list = data.patients || []
       setPatients(list)
       // CHANGED: Auto-select first patient or keep active
       if (activePatientId) {
         setSelectedId(String(activePatientId))
+        await fetchFullDetails(String(activePatientId))
       } else if (list.length > 0) {
         setSelectedId(String(list[0].id))
       }
@@ -60,13 +66,38 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
   useEffect(() => { fetchPatients() }, [])
 
   // ── Reset consent when patient changes ──
-  const handleSelectPatient = (id) => {
+  const handleSelectPatient = async (id) => {
     setSelectedId(id)
     setConsentVerified(false)
     setConsentPassword('')
     setConsentError(null)
     setEditMode(false)
     setEditMsg(null)
+    
+    if (id) {
+      await fetchFullDetails(id)
+    }
+  }
+
+  // ── Fetch full details (including medical data) ──
+  const fetchFullDetails = async (id) => {
+    try {
+      const savedUser = localStorage.getItem('ag_user')
+      const token = savedUser ? JSON.parse(savedUser).token : ''
+
+      const res = await fetch(`${API_BASE}/api/patients/${id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const data = await res.json()
+      
+      if (data.access === 'granted') {
+        setConsentVerified(true)
+        // Merge full patient details into the local patients list for the selected item
+        setPatients(prev => prev.map(p => String(p.id) === id ? data.patient : p))
+      }
+    } catch (err) {
+      console.error('fetchFullDetails error:', err)
+    }
   }
 
   // ── Consent verification ──
@@ -78,10 +109,16 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
     setConsentLoading(true)
     setConsentError(null)
     try {
+      const savedUser = localStorage.getItem('ag_user')
+      const token = savedUser ? JSON.parse(savedUser).token : ''
+
       const res = await fetch(`${API_BASE}/api/patients/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patient_id: parseInt(selectedId), password: consentPassword }),
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ patient_id: selectedId, password: consentPassword }),
       })
       const data = await res.json()
       if (data.verified) {
@@ -115,9 +152,15 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
     setEditLoading(true)
     setEditMsg(null)
     try {
+      const savedUser = localStorage.getItem('ag_user')
+      const token = savedUser ? JSON.parse(savedUser).token : ''
+
       const res = await fetch(`${API_BASE}/api/patients/${selectedId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           name: editName.trim(),
           phone: editPhone.trim(),
@@ -222,40 +265,10 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
                 ))}
               </select>
             )}
-            {/* CHANGED: Add New Patient button */}
-            <button onClick={() => { setShowAddForm(!showAddForm); setAddMsg(null) }}
-              className="btn btn-primary whitespace-nowrap">
-              {showAddForm ? 'Cancel' : '+ Add New Patient'}
-            </button>
           </div>
         </div>
       </div>
 
-      {/* ── Add New Patient Form ── */}
-      {showAddForm && (
-        <div className="card">
-          <div className="card-body">
-            <div className="section-label">Add New Patient</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Full Name" value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Rajesh Kumar" />
-              <Field label="Phone" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="e.g. 9876543210" />
-              <Field label="Password (for consent)" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Patient password" />
-              <div>{/* spacer */}</div>
-              <Field label="Current Medications (comma separated)" value={newMeds} onChange={e => setNewMeds(e.target.value)} placeholder="e.g. Amlodipine, Methotrexate" />
-              <Field label="Current Conditions (comma separated)" value={newConditions} onChange={e => setNewConditions(e.target.value)} placeholder="e.g. Kidney Disease, Hypertension" />
-            </div>
-            {/* CHANGED: Auto-fill added_by from logged-in pharmacist */}
-            <div className="text-[12px] text-[#484f58] mt-2">
-              Added by: <span className="text-[#e2e8f0] font-medium">{loggedInUser?.username || 'unknown'}</span>
-            </div>
-            <button onClick={handleAddPatient} disabled={addLoading}
-              className="btn btn-primary mt-3 disabled:opacity-50 disabled:cursor-not-allowed">
-              {addLoading ? 'Adding…' : 'Add Patient'}
-            </button>
-            <MsgBanner msg={addMsg} />
-          </div>
-        </div>
-      )}
 
       {/* ── Consent Verification ── */}
       {patient && !consentVerified && !showAddForm && (
@@ -322,10 +335,10 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
             {editMode ? (
               // ── Edit Mode ──
               <div className="space-y-3">
-                <Field label="Name" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Patient name" />
-                <Field label="Phone" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="Phone number" />
+                <Field label="Name" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Patient name" readOnly={loggedInUser.role !== 'admin'} />
+                <Field label="Phone" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="Phone number" readOnly={loggedInUser.role !== 'admin'} />
                 <Field label="Current Medications (comma separated)" value={editMeds} onChange={e => setEditMeds(e.target.value)} placeholder="e.g. Amlodipine, Methotrexate" />
-                <Field label="Current Conditions (comma separated)" value={editConditions} onChange={e => setEditConditions(e.target.value)} placeholder="e.g. Kidney Disease, Hypertension" />
+                <Field label="Current Conditions (comma separated)" value={editConditions} onChange={e => setEditConditions(e.target.value)} placeholder="e.g. Kidney Disease, Hypertension" readOnly={loggedInUser.role !== 'admin'} />
                 <div className="flex gap-2 mt-2">
                   <button onClick={handleSaveEdit} disabled={editLoading}
                     className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed">

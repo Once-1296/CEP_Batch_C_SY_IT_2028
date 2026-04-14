@@ -5,8 +5,8 @@ import Tabs from './components/Tabs'
 import DashboardPanel from './components/DashboardPanel'
 import PatientPanel from './components/PatientPanel'
 import SubstitutionPanel from './components/SubstitutionPanel'
-// CHANGED: Import new AdminPanel for admin role
 import AdminPanel from './components/AdminPanel'
+import PatientDashboard from './components/PatientDashboard'
 
 export default function App() {
   // CHANGED: user state is now an object { role, name, username } instead of a plain string
@@ -30,12 +30,13 @@ export default function App() {
     }
   }, [])
 
-  // CHANGED: handleLogin receives full user object from LoginPage
   const handleLogin = (userData) => {
     setUser(userData)
     // CHANGED: Route based on role after login
     if (userData.role === 'admin') {
       setActiveTab('admin')
+    } else if (userData.role === 'patient') {
+      setActiveTab('patient-dashboard')
     } else {
       setActiveTab('dashboard')
     }
@@ -61,10 +62,11 @@ export default function App() {
 
         {/* CHANGED: Role-based routing */}
         {user.role === 'admin' ? (
-          // CHANGED: Admin sees only AdminPanel — no Tabs component
           <AdminPanel />
+        ) : user.role === 'patient' ? (
+          <PatientDashboard user={user} />
         ) : (
-          // CHANGED: Pharmacist sees existing tabbed layout (Dashboard, Patient, Schema, Substitution)
+          // CHANGED: Pharmacist sees existing tabbed layout (Dashboard, Patient, Substitution)
           <>
             <Tabs active={activeTab} onChange={setActiveTab} />
 
