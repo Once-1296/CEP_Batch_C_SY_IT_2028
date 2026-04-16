@@ -1,10 +1,30 @@
 import React, { useState, useEffect } from 'react'
 import Badge from './Badge'
 import AlertBox from './AlertBox'
-// CHANGED: Removed import { PATIENTS } from '../data/mockData'
-// Patient data now comes from Supabase via API
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+
+// Helper to extract readable items from ABDM JSONB arrays
+function extractMedNames(medHistory) {
+  if (!Array.isArray(medHistory)) return []
+  return medHistory
+    .map(m => typeof m === 'string' ? m : (m?.medication_name || ''))
+    .filter(Boolean)
+}
+
+function extractConditions(conditions) {
+  if (!Array.isArray(conditions)) return []
+  return conditions
+    .map(c => typeof c === 'string' ? c : (c?.condition || ''))
+    .filter(Boolean)
+}
+
+function extractAllergies(allergies) {
+  if (!Array.isArray(allergies)) return []
+  return allergies
+    .map(a => typeof a === 'string' ? a : (a?.allergen || ''))
+    .filter(Boolean)
+}
 
 export default function PatientPanel({ activePatientId, loggedInUser }) {
   // ── Patient list state ──
@@ -20,22 +40,10 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
 
   // ── Edit mode state ──
   const [editMode, setEditMode]           = useState(false)
-  const [editMeds, setEditMeds]           = useState('')
-  const [editConditions, setEditConditions] = useState('')
   const [editName, setEditName]           = useState('')
   const [editPhone, setEditPhone]         = useState('')
   const [editLoading, setEditLoading]     = useState(false)
   const [editMsg, setEditMsg]             = useState(null)
-
-  // ── Add new patient state ──
-  const [showAddForm, setShowAddForm]     = useState(false)
-  const [newName, setNewName]             = useState('')
-  const [newPhone, setNewPhone]           = useState('')
-  const [newPassword, setNewPassword]     = useState('')
-  const [newMeds, setNewMeds]             = useState('')
-  const [newConditions, setNewConditions] = useState('')
-  const [addLoading, setAddLoading]       = useState(false)
-  const [addMsg, setAddMsg]               = useState(null)
 
   // ── Fetch patients on mount ──
   const fetchPatients = async () => {
@@ -49,7 +57,6 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
       const data = await res.json()
       const list = data.patients || []
       setPatients(list)
-      // CHANGED: Auto-select first patient or keep active
       if (activePatientId) {
         setSelectedId(String(activePatientId))
         await fetchFullDetails(String(activePatientId))
@@ -79,7 +86,7 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
     }
   }
 
-  // ── Fetch full details (including medical data) ──
+  // ── Fetch full details (including medical data from abdm_mock_records) ──
   const fetchFullDetails = async (id) => {
     try {
       const savedUser = localStorage.getItem('ag_user')
@@ -92,7 +99,6 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
       
       if (data.access === 'granted') {
         setConsentVerified(true)
-        // Merge full patient details into the local patients list for the selected item
         setPatients(prev => prev.map(p => String(p.id) === id ? data.patient : p))
       }
     } catch (err) {
@@ -136,13 +142,17 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
   // ── Find selected patient from list ──
   const patient = patients.find(p => String(p.id) === selectedId)
 
+  // ── Extract medical data from abdm_record (JSONB) ──
+  const abdmRecord = patient?.abdm_record || {}
+  const medNames = extractMedNames(abdmRecord.medication_history)
+  const condNames = extractConditions(abdmRecord.pre_existing_conditions)
+  const allergyNames = extractAllergies(abdmRecord.allergies)
+
   // ── Enter edit mode ──
   const enterEditMode = () => {
     if (!patient) return
     setEditName(patient.name || '')
     setEditPhone(patient.phone || '')
-    setEditMeds((patient.current_medications || []).join(', '))
-    setEditConditions((patient.current_conditions || []).join(', '))
     setEditMode(true)
     setEditMsg(null)
   }
@@ -164,58 +174,17 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
         body: JSON.stringify({
           name: editName.trim(),
           phone: editPhone.trim(),
-          // CHANGED: Split comma-separated string into array before sending
-          current_medications: editMeds.split(',').map(s => s.trim()).filter(Boolean),
-          current_conditions: editConditions.split(',').map(s => s.trim()).filter(Boolean),
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Update failed')
       setEditMsg({ type: 'success', text: 'Patient updated successfully!' })
       setEditMode(false)
-      // CHANGED: Refresh patient list to reflect changes
       await fetchPatients()
     } catch (err) {
       setEditMsg({ type: 'error', text: err.message })
     } finally {
       setEditLoading(false)
-    }
-  }
-
-  // ── Add new patient ──
-  const handleAddPatient = async () => {
-    if (!newName.trim() || !newPhone.trim() || !newPassword.trim()) {
-      setAddMsg({ type: 'error', text: 'Name, phone, and password are required.' })
-      return
-    }
-    setAddLoading(true)
-    setAddMsg(null)
-    try {
-      const res = await fetch(`${API_BASE}/api/patients`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newName.trim(),
-          phone: newPhone.trim(),
-          password: newPassword.trim(),
-          // CHANGED: Split comma-separated string into array before sending
-          current_medications: newMeds.split(',').map(s => s.trim()).filter(Boolean),
-          current_conditions: newConditions.split(',').map(s => s.trim()).filter(Boolean),
-          // CHANGED: Auto-fill added_by from logged-in pharmacist
-          added_by: loggedInUser?.username || 'unknown',
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Failed to add patient')
-      setAddMsg({ type: 'success', text: 'Patient added successfully!' })
-      // CHANGED: Clear form and refresh list
-      setNewName(''); setNewPhone(''); setNewPassword(''); setNewMeds(''); setNewConditions('')
-      setShowAddForm(false)
-      await fetchPatients()
-    } catch (err) {
-      setAddMsg({ type: 'error', text: err.message })
-    } finally {
-      setAddLoading(false)
     }
   }
 
@@ -261,7 +230,7 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
               >
                 {patients.length === 0 && <option value="">No patients found</option>}
                 {patients.map((p) => (
-                  <option key={p.id} value={String(p.id)}>{p.name} — {p.phone || 'No phone'}</option>
+                  <option key={p.id} value={String(p.id)}>{p.name} — {p.abha_id || 'No ABHA'}</option>
                 ))}
               </select>
             )}
@@ -271,7 +240,7 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
 
 
       {/* ── Consent Verification ── */}
-      {patient && !consentVerified && !showAddForm && (
+      {patient && !consentVerified && (
         <div className="card">
           <div className="card-body">
             <div className="section-label">Patient Consent Required</div>
@@ -304,11 +273,10 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
       )}
 
       {/* ── Patient Record (shown only after consent verified) ── */}
-      {patient && consentVerified && !showAddForm && (
+      {patient && consentVerified && (
         <div className="card">
           <div className="card-head">
             <div className="flex items-center gap-3.5">
-              {/* CHANGED: Initials derived from patient name */}
               <div className="w-12 h-12 rounded-full bg-emerald-950/40 border border-emerald-800/30
                               flex items-center justify-center text-[16px] font-bold text-emerald-400">
                 {patient.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
@@ -316,12 +284,11 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
               <div>
                 <div className="text-[16px] font-bold text-[#e2e8f0]">{patient.name}</div>
                 <div className="text-[12px] text-[#8b949e] mt-0.5">
-                  Phone: {patient.phone || '—'}&nbsp;|&nbsp;Added by: {patient.added_by || '—'}
+                  ABHA: {patient.abha_id || '—'}&nbsp;|&nbsp;Phone: {patient.phone || '—'}
                 </div>
               </div>
             </div>
             <div className="flex gap-2">
-              {/* CHANGED: Edit Patient toggle */}
               {!editMode && (
                 <button onClick={enterEditMode} className="btn btn-outline text-[12px]">
                   Edit Patient
@@ -333,12 +300,10 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
 
           <div className="card-body">
             {editMode ? (
-              // ── Edit Mode ──
+              // ── Edit Mode (only name & phone) ──
               <div className="space-y-3">
-                <Field label="Name" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Patient name" readOnly={loggedInUser.role !== 'admin'} />
-                <Field label="Phone" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="Phone number" readOnly={loggedInUser.role !== 'admin'} />
-                <Field label="Current Medications (comma separated)" value={editMeds} onChange={e => setEditMeds(e.target.value)} placeholder="e.g. Amlodipine, Methotrexate" />
-                <Field label="Current Conditions (comma separated)" value={editConditions} onChange={e => setEditConditions(e.target.value)} placeholder="e.g. Kidney Disease, Hypertension" readOnly={loggedInUser.role !== 'admin'} />
+                <Field label="Name" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Patient name" />
+                <Field label="Phone" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="Phone number" />
                 <div className="flex gap-2 mt-2">
                   <button onClick={handleSaveEdit} disabled={editLoading}
                     className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
@@ -350,13 +315,13 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
                 <MsgBanner msg={editMsg} />
               </div>
             ) : (
-              // ── Display Mode ──
+              // ── Display Mode — reads from abdm_mock_records ──
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  {/* CHANGED: Use current_medications from Supabase */}
+                  {/* Active medications from abdm_mock_records */}
                   <div className="section-label">Active medications</div>
-                  {(patient.current_medications || []).length > 0 ? (
-                    (patient.current_medications || []).map((med) => (
+                  {medNames.length > 0 ? (
+                    medNames.map((med) => (
                       <div key={med} className="info-row">
                         <span className="text-[#8b949e]">{med}</span>
                         <Badge variant="warn">Active</Badge>
@@ -366,37 +331,49 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
                     <p className="text-[13px] text-[#484f58]">No medications recorded</p>
                   )}
 
-                  {/* CHANGED: Use current_conditions from Supabase */}
+                  {/* Pre-existing conditions */}
                   <div className="section-label mt-4">Diagnosed conditions</div>
                   <div className="mt-1 flex flex-wrap">
-                    {(patient.current_conditions || []).length > 0 ? (
-                      (patient.current_conditions || []).map((c) => (
+                    {condNames.length > 0 ? (
+                      condNames.map((c) => (
                         <span key={c} className="tag-pill">{c}</span>
                       ))
                     ) : (
                       <p className="text-[13px] text-[#484f58]">No conditions recorded</p>
                     )}
                   </div>
+
+                  {/* Allergies */}
+                  <div className="section-label mt-4">Allergies</div>
+                  <div className="mt-1 flex flex-wrap">
+                    {allergyNames.length > 0 ? (
+                      allergyNames.map((a) => (
+                        <span key={a} className="tag-pill bg-red-950/30 border-red-800/30 text-red-400">{a}</span>
+                      ))
+                    ) : (
+                      <p className="text-[13px] text-[#484f58]">No allergies recorded</p>
+                    )}
+                  </div>
                 </div>
 
                 <div>
-                  {/* CHANGED: Consent status — verified via password */}
+                  {/* Consent status */}
                   <div className="section-label">Consent status</div>
                   <AlertBox variant="safe" title="Consent granted">
                     Patient verified their identity via password at the counter.
                   </AlertBox>
 
-                  {/* CHANGED: Patient metadata */}
+                  {/* Patient metadata */}
                   <div className="section-label mt-4">Record information</div>
                   <div className="space-y-1 text-[12px]">
                     <div className="text-[#8b949e]">Patient ID: <span className="text-[#e2e8f0] font-medium">{patient.id}</span></div>
+                    <div className="text-[#8b949e]">ABHA ID: <span className="text-[#e2e8f0] font-medium">{patient.abha_id || '—'}</span></div>
                     <div className="text-[#8b949e]">Phone: <span className="text-[#e2e8f0] font-medium">{patient.phone || '—'}</span></div>
-                    <div className="text-[#8b949e]">Added by: <span className="text-[#e2e8f0] font-medium">{patient.added_by || '—'}</span></div>
+                    <div className="text-[#8b949e]">Registered by: <span className="text-[#e2e8f0] font-medium">{patient.registered_by || '—'}</span></div>
                   </div>
                 </div>
               </div>
             )}
-            {/* Show edit message outside of edit mode too */}
             {!editMode && <MsgBanner msg={editMsg} />}
           </div>
         </div>

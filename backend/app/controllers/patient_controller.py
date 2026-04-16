@@ -12,26 +12,40 @@ async def list_patients(user: dict):
 
     if user["role"] == "admin":
         result = supabase.table("patients").select("*").execute()
+        patients = result.data or []
+        # For admin, also fetch abdm_mock_records for each patient
+        for p in patients:
+            abha_id = p.get("abha_id")
+            if abha_id:
+                abdm = supabase.table("abdm_mock_records").select("*").eq("abha_id", abha_id).execute()
+                if abdm.data:
+                    p["abdm_record"] = abdm.data[0]
+        return {"patients": patients}
     else:
         # Pharmacists see basic info for all, but full info for consented ones
-        all_patients = supabase.table("patients").select("id, name, abha_id").execute().data or []
-        
+        all_patients = supabase.table("patients").select("id, name, abha_id, phone").execute().data or []
+
         # Get accepted requests for this pharmacist
         accepted_reqs = supabase.table("access_requests")\
             .select("patient_id")\
             .eq("pharmacist_id", user["id"])\
             .eq("status", "ACCEPTED").execute().data or []
-        
+
         accepted_ids = {r["patient_id"] for r in accepted_reqs}
-        
+
         final_patients = []
         for p in all_patients:
             p_id = p["id"]
             if p_id in accepted_ids:
-                # Fetch full data for this specific patient
-                # (Ideally we'd do a batch select but Supabase limits complex filters in select)
+                # Fetch full patient data
                 full_p = supabase.table("patients").select("*").eq("id", p_id).execute().data[0]
                 full_p["access_status"] = "ACCEPTED"
+                # Also fetch abdm_mock_records
+                abha_id = full_p.get("abha_id")
+                if abha_id:
+                    abdm = supabase.table("abdm_mock_records").select("*").eq("abha_id", abha_id).execute()
+                    if abdm.data:
+                        full_p["abdm_record"] = abdm.data[0]
                 final_patients.append(full_p)
             else:
                 p["access_status"] = "NONE"
@@ -43,21 +57,14 @@ async def list_patients(user: dict):
                 if pending_check:
                     p["access_status"] = pending_check[0]["status"]
                 final_patients.append(p)
-        
-        return {"patients": final_patients}
 
-    return {"patients": result.data or []}
+        return {"patients": final_patients}
 
 
 async def get_patient_details(patient_id: str, requester: dict):
     supabase = get_supabase()
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-
-    # Access Logic:
-    # 1. Admin: Full Access
-    # 2. Pharmacist: Full Access ONLY IF an ACCEPTED access_request exists
-    # 3. Patient: Full Access to own data
 
     has_full_access = False
     if requester["role"] == "admin":
@@ -77,13 +84,19 @@ async def get_patient_details(patient_id: str, requester: dict):
         if not result.data:
             raise HTTPException(status_code=404, detail="Patient not found")
         patient_data = result.data[0]
-        
-        # Also fetch family relationships (user feedback: immediate access if trust granted)
+
+        # Fetch abdm_mock_records by abha_id
+        abha_id = patient_data.get("abha_id")
+        if abha_id:
+            abdm = supabase.table("abdm_mock_records").select("*").eq("abha_id", abha_id).execute()
+            if abdm.data:
+                patient_data["abdm_record"] = abdm.data[0]
+
+        # Also fetch family relationships
         family = supabase.table("family_relationships").select("*").eq("patient_id", patient_id).execute()
         patient_data["family"] = family.data or []
         return {"access": "granted", "patient": patient_data}
     else:
-        # Denied or Basic Access
         result = supabase.table("patients").select("id, name, abha_id").eq("id", patient_id).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Patient not found")
@@ -96,7 +109,7 @@ async def request_access(patient_id: str, pharmacist_id: str):
     existing = supabase.table("access_requests").select("id, status")\
         .eq("pharmacist_id", pharmacist_id)\
         .eq("patient_id", patient_id).execute()
-    
+
     if existing.data and len(existing.data) > 0:
         return {"status": "exists", "request": existing.data[0]}
 
@@ -114,7 +127,7 @@ async def get_access_requests(patient_id: str):
     # Join with pharmacists to show who is asking
     result = supabase.table("access_requests").select("id, status, created_at, pharmacist_id, pharmacists(name)")\
         .eq("patient_id", patient_id).execute()
-    
+
     return {
         "requests": result.data or [],
         "warning": "Granting access allows the pharmacist to see your data and your family's records. Only approve if you fully trust them."
@@ -140,11 +153,10 @@ async def create_patient(req: CreatePatientRequest):
 
     insert_data = {
         "name": req.name,
+        "abha_id": req.abha_id,
         "phone": req.phone,
         "password": hash_password(req.password),
-        "current_medications": req.current_medications,
-        "current_conditions": req.current_conditions,
-        "registered_by": req.added_by,
+        "registered_by": req.registered_by,
     }
     result = supabase.table("patients").insert(insert_data).execute()
 
@@ -158,8 +170,6 @@ async def update_patient(patient_id: str, req: UpdatePatientRequest):
     update_data = {}
     if req.name is not None: update_data["name"] = req.name
     if req.phone is not None: update_data["phone"] = req.phone
-    if req.current_medications is not None: update_data["current_medications"] = req.current_medications
-    if req.current_conditions is not None: update_data["current_conditions"] = req.current_conditions
 
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -179,4 +189,3 @@ async def verify_patient(req: VerifyPatientRequest):
 
     stored_hash = result.data[0]["password"]
     return {"verified": stored_hash == hash_password(req.password)}
-

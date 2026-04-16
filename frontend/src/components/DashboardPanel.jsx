@@ -2,19 +2,16 @@ import React, { useState, useEffect } from 'react'
 import SafetyResult from './SafetyResult'
 import AlertBox from './AlertBox'
 import { useSafetyCheck } from '../hooks/useSafetyCheck'
-// CHANGED: Removed import { PATIENTS } from '../data/mockData'
-// Patients now fetched from GET /api/patients
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 
-
-// CHANGED: ADDENDUM 6 - Override PipelineSteps since original file is untouchable
+// Pipeline steps matching the new ML-based backend
 const FRONTEND_STEPS = [
   'Input normalization & error correction',
   'Brand-to-generic mapping',
   'Patient record retrieval',
-  'DDI check',
+  'ML model classification',
   'Risk output'
 ]
 
@@ -51,15 +48,29 @@ function CustomPipelineSteps({ steps, loading, loadingMsg }) {
   )
 }
 
+// Helper to extract readable items from ABDM JSONB arrays
+function extractMedNames(medHistory) {
+  if (!Array.isArray(medHistory)) return []
+  return medHistory
+    .map(m => typeof m === 'string' ? m : (m?.medication_name || ''))
+    .filter(Boolean)
+}
+
+function extractConditions(conditions) {
+  if (!Array.isArray(conditions)) return []
+  return conditions
+    .map(c => typeof c === 'string' ? c : (c?.condition || ''))
+    .filter(Boolean)
+}
+
 export default function DashboardPanel({ onViewPatient, onPatientChange }) {
   const [input, setInput]         = useState('')
-  // CHANGED: patientId starts as empty — will be set after patients are fetched
   const [patientId, setPatientId] = useState('')
   const [userRole, setUserRole] = useState('')
   const [userId, setUserId] = useState('')
   const { loading, loadingMsg, steps, showSteps, result, apiError, runCheck, clear } = useSafetyCheck()
 
-  // CHANGED: Fetch patients from Supabase via GET /api/patients
+  // Fetch patients from Supabase via GET /api/patients
   const [patients, setPatients]     = useState([])
   const [patientsLoading, setPatientsLoading] = useState(true)
 
@@ -69,9 +80,7 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
         const savedUser = localStorage.getItem('ag_user')
         const parsed = savedUser ? JSON.parse(savedUser) : null
         const token = parsed ? parsed.token : ''
-        // attempt to extract user role/id from saved object
         if (parsed) {
-          // support either { user: { id, role } , token } or { id, role, token }
           const maybeUser = parsed.user || parsed
           setUserRole(maybeUser.role || '')
           setUserId(String(maybeUser.id || ''))
@@ -85,7 +94,6 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
         const data = await res.json()
         const list = data.patients || []
         setPatients(list)
-        // CHANGED: Auto-select first patient if available
         if (list.length > 0) {
           setPatientId(String(list[0].id))
           if (onPatientChange) onPatientChange(String(list[0].id))
@@ -99,14 +107,12 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
     fetchPatients()
   }, [])
 
-  // ── Pharmacist: request access to selected patient ──
+  // Pharmacist: request access to selected patient
   const handleRequestAccess = async () => {
     try {
       const savedUser = localStorage.getItem('ag_user')
       const parsed = savedUser ? JSON.parse(savedUser) : null
       const token = parsed ? parsed.token : ''
-      // pharmacist id fallback to stored userId
-      const pharmacistId = parsed && (parsed.user?.id || parsed.id) ? (parsed.user?.id || parsed.id) : userId
       if (!patientId) return alert('Select a patient first')
 
       const res = await fetch(`${API_BASE}/api/patients/request-access`, {
@@ -115,7 +121,7 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ patient_id: patientId, pharmacist_id: pharmacistId })
+        body: JSON.stringify({ patient_id: patientId })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'Failed to request access')
@@ -125,8 +131,11 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
     }
   }
 
-  // CHANGED: Pass Supabase patient.id (as string) to the safety check
-  const handleCheck = () => runCheck(input, patientId)
+  // Pass abha_id from selected patient to safety check
+  const handleCheck = () => {
+    const abhaId = selectedPatient?.abha_id || ''
+    runCheck(input, patientId, abhaId)
+  }
   const handleClear = () => { setInput(''); clear() }
   const handleDemo  = (name) => setInput(name)
 
@@ -136,15 +145,19 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
     if (onPatientChange) onPatientChange(id)
   }
 
-  // CHANGED: Find selected patient from fetched list instead of PATIENTS constant
   const selectedPatient = patients.find(p => String(p.id) === patientId)
+
+  // Extract medical data from abdm_record (JSONB)
+  const abdmRecord = selectedPatient?.abdm_record || {}
+  const medNames = extractMedNames(abdmRecord.medication_history)
+  const condNames = extractConditions(abdmRecord.pre_existing_conditions)
 
   return (
     <div>
       <div className="card">
         <div className="card-body">
 
-          {/* Medicine search — unchanged */}
+          {/* Medicine search */}
           <div className="section-label">Medicine lookup</div>
           <div className="flex gap-2 mb-3.5 flex-wrap">
             <input
@@ -164,7 +177,7 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
             <button onClick={handleClear} className="btn btn-outline">Clear</button>
           </div>
 
-          {/* CHANGED: Patient selector — now fetches from GET /api/patients */}
+          {/* Patient selector */}
           <div className="section-label">Select patient</div>
           <div className="flex gap-2 mb-4 items-center flex-wrap">
             {patientsLoading ? (
@@ -180,7 +193,7 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
                 {patients.length === 0 && <option value="">No patients found</option>}
                 {patients.map((p) => (
                   <option key={p.id} value={String(p.id)}>
-                    {p.name} — {p.phone || 'No phone'}
+                    {p.name} — {p.abha_id || 'No ABHA'}
                   </option>
                 ))}
               </select>
@@ -197,18 +210,18 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
             </div>
           </div>
 
-          {/* CHANGED: Patient quick info strip using Supabase fields */}
+          {/* Patient quick info strip */}
           {selectedPatient && (
             <div className="bg-[#0d1117] border border-[#21262d] rounded-lg px-3.5 py-2.5 mb-4">
               {selectedPatient.access_status === 'ACCEPTED' ? (
                 <div className="flex flex-wrap gap-4 text-[12px]">
                   <span className="text-[#8b949e]">Patient: <span className="text-[#e2e8f0] font-medium">{selectedPatient.name}</span></span>
-                  <span className="text-[#8b949e]">Phone: <span className="text-[#e2e8f0] font-medium">{selectedPatient.phone || '—'}</span></span>
+                  <span className="text-[#8b949e]">ABHA: <span className="text-[#e2e8f0] font-medium">{selectedPatient.abha_id || '—'}</span></span>
                   <span className="text-[#8b949e]">Conditions: <span className="text-amber-400 font-medium">
-                    {(selectedPatient.current_conditions || []).join(', ') || 'None'}
+                    {condNames.length > 0 ? condNames.join(', ') : 'None'}
                   </span></span>
-                  <span className="text-[#8b949e]">Current meds: <span className="text-blue-400 font-medium">
-                    {(selectedPatient.current_medications || []).join(', ') || 'None'}
+                  <span className="text-[#8b949e]">Active meds: <span className="text-blue-400 font-medium">
+                    {medNames.length > 0 ? medNames.join(', ') : 'None'}
                   </span></span>
                 </div>
               ) : (
@@ -228,19 +241,19 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
         </div>
       </div>
 
-      {/* Pipeline steps — unchanged style but using CustomPipelineSteps */}
+      {/* Pipeline steps */}
       {showSteps && (
         <CustomPipelineSteps steps={steps} loading={loading} loadingMsg={loadingMsg} />
       )}
 
-      {/* API connection error — unchanged */}
+      {/* API connection error */}
       {apiError && (
         <AlertBox variant="critical" title="Backend connection error">
           {apiError}
         </AlertBox>
       )}
 
-      {/* Safety check result — unchanged */}
+      {/* Safety check result */}
       {!loading && result && <SafetyResult result={result} />}
     </div>
   )

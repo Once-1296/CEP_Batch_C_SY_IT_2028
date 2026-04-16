@@ -8,10 +8,10 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 /**
  * useSafetyCheck
  * Calls the real FastAPI backend:
- *   POST /api/check-drug  →  { pharmacist_query, patient_id }
+ *   POST /api/check-drug  →  { pharmacist_query, patient_id, abha_id }
  *
  * Backend response shape:
- *   { severity_tier, message, resolved_data, suggested_alternative }
+ *   { severity_tier, message, resolved_data, suggested_alternative, risk_probability, ml_details }
  *
  * severity_tier values from backend: "Green" | "Yellow" | "Red"
  */
@@ -23,20 +23,18 @@ export function useSafetyCheck() {
   const [showSteps, setShowSteps] = useState(false)
   const [apiError, setApiError] = useState(null)
 
-  const runCheck = useCallback(async (rawInput, patientId) => {
+  const runCheck = useCallback(async (rawInput, patientId, abhaId) => {
     if (!rawInput.trim()) return
-    // console.log(rawInput.trim())
     // Reset state
     setResult(null)
     setApiError(null)
     setShowSteps(true)
 
-    // CHANGED: Define exactly the 5 steps matching the new backend logic per ADDENDUM 6
     const FRONTEND_STEPS = [
       'Input normalization & error correction',
       'Brand-to-generic mapping',
       'Patient record retrieval',
-      'DDI check',
+      'ML model classification',
       'Risk output'
     ]
     setSteps(FRONTEND_STEPS.map(() => 'wait'))
@@ -50,7 +48,7 @@ export function useSafetyCheck() {
       'Normalizing input with SciSpacy NLP…',
       'Mapping brand to generic salt via FuzzyWuzzy…',
       'Retrieving patient data from Supabase…',
-      'Running fuzzy DDI cross-reference query…',
+      'Running ML model classification (predict_proba)…',
     ]
 
     // Animate steps 0-3 with delays
@@ -78,6 +76,7 @@ export function useSafetyCheck() {
         body: JSON.stringify({
           pharmacist_query: rawInput.trim(),
           patient_id: patientId,
+          abha_id: abhaId || '',
         }),
       })
 
@@ -91,7 +90,6 @@ export function useSafetyCheck() {
       setLoading(false)
 
       // Map backend severity_tier → frontend severity
-      // Backend uses: "Green" | "Yellow" | "Red"
       const severityMap = {
         Red: 'critical',
         Yellow: 'moderate',
@@ -108,6 +106,8 @@ export function useSafetyCheck() {
         },
         severity: severityMap[data.severity_tier] || 'safe',
         message: data.message,
+        riskProbability: data.risk_probability || 0,
+        mlDetails: data.ml_details || [],
         substitute: data.suggested_alternative
           ? { name: data.suggested_alternative, brands: data.suggested_alternative, reason: data.message }
           : null,

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from app.controllers.admin_controller import add_admin, add_pharmacist, add_patient
-from app.controllers.schema import AddAdminRequest, AddPharmacistRequest, CreatePatientRequest
+from app.controllers.admin_controller import add_admin, add_pharmacist, add_patient, upload_abdm_record
+from app.controllers.schema import AddAdminRequest, AddPharmacistRequest, CreatePatientRequest, ABDMRecordUploadRequest
 
 
 router = APIRouter()
@@ -20,3 +20,8 @@ async def add_admin_route(req: AddAdminRequest):
 @router.post("/api/admin/add-patient")
 async def add_patient_route(req: CreatePatientRequest):
     return await add_patient(req)
+
+
+@router.post("/api/admin/upload-abdm-record")
+async def upload_abdm_record_route(req: ABDMRecordUploadRequest):
+    return await upload_abdm_record(req)

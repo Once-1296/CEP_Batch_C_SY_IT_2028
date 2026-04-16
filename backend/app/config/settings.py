@@ -14,7 +14,6 @@ CORS_ALLOW_METHODS = ["*"]
 CORS_ALLOW_HEADERS = ["*"]
 
 MEDICINES_CSV = "medicines_cleaned.csv"
-DRUG_INTERACTIONS_CSV = "drug_interactions_cleaned.csv"
 SPACY_MODEL = "en_core_web_sm"
 
 # General Settings stuff 67

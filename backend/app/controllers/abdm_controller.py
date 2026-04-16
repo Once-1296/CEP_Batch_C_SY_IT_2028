@@ -625,15 +625,24 @@ def _extract_medical_history_and_avoid_list(bundle: Dict[str, Any]) -> Tuple[Lis
 def _update_patient_abdm_fields(abha_id: str, medical_history: List[str], medicines_to_avoid: List[str]) -> Dict[str, Any]:
     supabase = _require_supabase_admin()
 
-    result = supabase.table("patients").update(
-        {
-            "medical_history": medical_history,
-            "medicines_to_avoid": medicines_to_avoid,
-        }
-    ).eq("abha_id", abha_id).execute()
+    # Verify the patient exists
+    patient_check = supabase.table("patients").select("id").eq("abha_id", abha_id).execute()
+    if not patient_check.data or len(patient_check.data) == 0:
+        raise HTTPException(status_code=404, detail=f"Patient with abha_id '{abha_id}' was not found")
+
+    # Write to abdm_mock_records instead of patients table
+    upsert_data = {
+        "abha_id": abha_id,
+        "pre_existing_conditions": [{"condition": c} for c in medical_history] if medical_history else [],
+        "allergies": [{"allergen": a} for a in medicines_to_avoid] if medicines_to_avoid else [],
+    }
+
+    result = supabase.table("abdm_mock_records").upsert(
+        upsert_data, on_conflict="abha_id"
+    ).execute()
 
     if not result.data or len(result.data) == 0:
-        raise HTTPException(status_code=404, detail=f"Patient with abha_id '{abha_id}' was not found")
+        raise HTTPException(status_code=500, detail=f"Failed to update ABDM records for '{abha_id}'")
 
     return dict(result.data[0])
 
@@ -705,7 +714,7 @@ async def request_abdm_consent(req: ABDMConsentInitRequest, request: Request) ->
         raise HTTPException(status_code=400, detail="abha_id is required")
 
     patient_result = supabase.table("patients").select(
-        "id, abha_id, medical_history, medicines_to_avoid"
+        "id, abha_id"
     ).eq("abha_id", abha_id).limit(1).execute()
 
     if not patient_result.data:

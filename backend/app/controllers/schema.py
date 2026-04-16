@@ -26,25 +26,23 @@ class CreatePatientRequest(BaseModel):
     abha_id: str
     phone: str
     password: str
-    current_medications: List[str] = []
-    current_conditions: List[str] = []
-    added_by: str
+    registered_by: str  # pharmacist UUID
 
 
 class UpdatePatientRequest(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
-    current_medications: Optional[List[str]] = None
-    current_conditions: Optional[List[str]] = None
 
 
 class VerifyPatientRequest(BaseModel):
     patient_id: str
     password: str
 
+
 class DrugCheckRequest(BaseModel):
     pharmacist_query: str
     patient_id: str
+    abha_id: str
 
 
 class RequestAccessRequest(BaseModel):
@@ -54,6 +52,15 @@ class RequestAccessRequest(BaseModel):
 class RespondAccessRequest(BaseModel):
     request_id: str
     status: str  # 'ACCEPTED' or 'REJECTED'
+
+
+class ABDMRecordUploadRequest(BaseModel):
+    """JSON uploaded by admin for abdm_mock_records"""
+    abha_id: str
+    basic_health_details: Dict[str, Any] = {}
+    pre_existing_conditions: List[Any] = []
+    medication_history: List[Any] = []
+    allergies: List[Any] = []
 
 
 class ABDMConsentInitRequest(BaseModel):
