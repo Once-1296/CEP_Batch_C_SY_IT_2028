@@ -26,6 +26,29 @@ function extractAllergies(allergies) {
     .filter(Boolean)
 }
 
+// ── Reusable message banner ──
+const MsgBanner = ({ msg }) => {
+  if (!msg) return null
+  const isErr = msg.type === 'error'
+  return (
+    <div className={`rounded-lg px-3 py-2.5 text-[12px] mt-3 ${
+      isErr ? 'bg-red-950/40 border border-red-800/40 text-red-400'
+            : 'bg-emerald-950/40 border border-emerald-800/40 text-emerald-400'
+    }`}>{msg.text}</div>
+  )
+}
+
+// ── Reusable input field ──
+const Field = ({ label, type = 'text', value, onChange, placeholder }) => (
+  <div>
+    <label className="text-[11px] font-bold text-[#484f58] uppercase tracking-widest block mb-1.5">{label}</label>
+    <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+      className="w-full px-3.5 py-2.5 border border-[#21262d] rounded-lg text-[14px] outline-none
+                 bg-[#0d1117] text-[#e2e8f0] placeholder-[#484f58]
+                 focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20 transition-all" />
+  </div>
+)
+
 export default function PatientPanel({ activePatientId, loggedInUser }) {
   // ── Patient list state ──
   const [patients, setPatients]           = useState([])
@@ -187,29 +210,6 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
       setEditLoading(false)
     }
   }
-
-  // ── Reusable message banner ──
-  const MsgBanner = ({ msg }) => {
-    if (!msg) return null
-    const isErr = msg.type === 'error'
-    return (
-      <div className={`rounded-lg px-3 py-2.5 text-[12px] mt-3 ${
-        isErr ? 'bg-red-950/40 border border-red-800/40 text-red-400'
-              : 'bg-emerald-950/40 border border-emerald-800/40 text-emerald-400'
-      }`}>{msg.text}</div>
-    )
-  }
-
-  // ── Reusable input field ──
-  const Field = ({ label, type = 'text', value, onChange, placeholder }) => (
-    <div>
-      <label className="text-[11px] font-bold text-[#484f58] uppercase tracking-widest block mb-1.5">{label}</label>
-      <input type={type} value={value} onChange={onChange} placeholder={placeholder}
-        className="w-full px-3.5 py-2.5 border border-[#21262d] rounded-lg text-[14px] outline-none
-                   bg-[#0d1117] text-[#e2e8f0] placeholder-[#484f58]
-                   focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20 transition-all" />
-    </div>
-  )
 
   return (
     <div>
