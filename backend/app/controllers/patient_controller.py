@@ -5,59 +5,77 @@ from app.controllers.schema import CreatePatientRequest, UpdatePatientRequest, V
 from app.config.settings import hash_password
 
 
-async def list_patients(user: dict):
+async def list_patients(user: dict, page: int = 1, limit: int = 20, search: str = None):
     supabase = get_supabase()
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
+    try:
+        tpage,tlimit = int(page),int(limit)
+    except Exception as e:
+        raise HTTPException(status_code=422,detail=str(e) + "\n Could not convert page/limit to int")
+
+
+    offset = (page - 1) * limit
+
     if user["role"] == "admin":
-        result = supabase.table("patients").select("*").execute()
-        patients = result.data or []
-        # For admin, also fetch abdm_mock_records for each patient
-        for p in patients:
-            abha_id = p.get("abha_id")
-            if abha_id:
-                abdm = supabase.table("abdm_mock_records").select("*").eq("abha_id", abha_id).execute()
-                if abdm.data:
-                    p["abdm_record"] = abdm.data[0]
-        return {"patients": patients}
+        query = supabase.table("patients").select("*")
     else:
-        # Pharmacists see basic info for all, but full info for consented ones
-        all_patients = supabase.table("patients").select("id, name, abha_id, phone").execute().data or []
+        query = supabase.table("patients").select("id, name, abha_id, phone")
 
-        # Get accepted requests for this pharmacist
-        accepted_reqs = supabase.table("access_requests")\
-            .select("patient_id")\
+    if search:
+        query = query.or_(f"name.ilike.%{search}%,abha_id.ilike.%{search}%")
+
+    query = query.range(offset, offset + limit - 1)
+    
+    all_patients = query.execute().data or []
+    if not all_patients:
+        return {"patients": []}
+        
+    patient_ids = [p["id"] for p in all_patients]
+    abha_ids = [p["abha_id"] for p in all_patients if p.get("abha_id")]
+
+    if user["role"] == "admin":
+        if abha_ids:
+            abdm_records = supabase.table("abdm_mock_records").select("*").in_("abha_id", abha_ids).execute().data or []
+            abdm_dict = {r["abha_id"]: r for r in abdm_records}
+            for p in all_patients:
+                if p.get("abha_id") in abdm_dict:
+                    p["abdm_record"] = abdm_dict[p["abha_id"]]
+        return {"patients": all_patients}
+    else:
+        reqs = supabase.table("access_requests")\
+            .select("patient_id, status")\
             .eq("pharmacist_id", user["id"])\
-            .eq("status", "ACCEPTED").execute().data or []
-
-        accepted_ids = {r["patient_id"] for r in accepted_reqs}
-
+            .in_("patient_id", patient_ids).execute().data or []
+            
+        status_dict = {r["patient_id"]: r["status"] for r in reqs}
+        accepted_ids = {r["patient_id"] for r in reqs if r["status"] == "ACCEPTED"}
+        
+        full_p_dict = {}
+        if accepted_ids:
+            full_ps = supabase.table("patients").select("*").in_("id", list(accepted_ids)).execute().data or []
+            full_p_dict = {p["id"]: p for p in full_ps}
+            
+            accepted_abhas = [p["abha_id"] for p in full_ps if p.get("abha_id")]
+            if accepted_abhas:
+                abdm_recs = supabase.table("abdm_mock_records").select("*").in_("abha_id", accepted_abhas).execute().data or []
+                abdm_dict = {r["abha_id"]: r for r in abdm_recs}
+                for fp in full_ps:
+                    if fp.get("abha_id") in abdm_dict:
+                        fp["abdm_record"] = abdm_dict[fp["abha_id"]]
+        
         final_patients = []
         for p in all_patients:
             p_id = p["id"]
             if p_id in accepted_ids:
-                # Fetch full patient data
-                full_p = supabase.table("patients").select("*").eq("id", p_id).execute().data[0]
+                full_p = full_p_dict.get(p_id, p)
                 full_p["access_status"] = "ACCEPTED"
-                # Also fetch abdm_mock_records
-                abha_id = full_p.get("abha_id")
-                if abha_id:
-                    abdm = supabase.table("abdm_mock_records").select("*").eq("abha_id", abha_id).execute()
-                    if abdm.data:
-                        full_p["abdm_record"] = abdm.data[0]
                 final_patients.append(full_p)
             else:
-                p["access_status"] = "NONE"
-                # Check for pending status
-                pending_check = supabase.table("access_requests")\
-                    .select("status")\
-                    .eq("pharmacist_id", user["id"])\
-                    .eq("patient_id", p_id).execute().data
-                if pending_check:
-                    p["access_status"] = pending_check[0]["status"]
+                p["access_status"] = status_dict.get(p_id, "NONE")
                 final_patients.append(p)
-
+                
         return {"patients": final_patients}
 
 

@@ -54,6 +54,8 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
   const [patients, setPatients]           = useState([])
   const [patientsLoading, setPatientsLoading] = useState(true)
   const [selectedId, setSelectedId]       = useState(activePatientId || '')
+  const [page, setPage]                   = useState(1)
+  const [search, setSearch]               = useState('')
 
   // ── Consent verification state ──
   const [consentPassword, setConsentPassword] = useState('')
@@ -68,23 +70,39 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
   const [editLoading, setEditLoading]     = useState(false)
   const [editMsg, setEditMsg]             = useState(null)
 
-  // ── Fetch patients on mount ──
-  const fetchPatients = async () => {
+  // ── Sync with activePatientId prop ONLY when it changes externally ──
+  useEffect(() => {
+    if (activePatientId) {
+      setSelectedId(String(activePatientId))
+      fetchFullDetails(String(activePatientId))
+    }
+  }, [activePatientId])
+
+  // ── Fetch patients ──
+  const fetchPatients = async (currentPage = page) => {
+    setPatientsLoading(true)
     try {
       const savedUser = localStorage.getItem('ag_user')
       const token = savedUser ? JSON.parse(savedUser).token : ''
 
-      const res = await fetch(`${API_BASE}/api/patients`, {
+      const queryParams = new URLSearchParams({ page: currentPage, limit: 20 })
+      if (search) queryParams.append('search', search)
+
+      const res = await fetch(`${API_BASE}/api/patients?${queryParams.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       const data = await res.json()
       const list = data.patients || []
       setPatients(list)
-      if (activePatientId) {
-        setSelectedId(String(activePatientId))
-        await fetchFullDetails(String(activePatientId))
-      } else if (list.length > 0) {
-        setSelectedId(String(list[0].id))
+      
+      // Select the first patient ONLY if we don't have a selection yet
+      // or if we just performed a search and the current selection isn't in the list
+      if (list.length > 0) {
+        const currentInList = list.find(p => String(p.id) === selectedId)
+        if (!selectedId || (!currentInList && search)) {
+          setSelectedId(String(list[0].id))
+          fetchFullDetails(String(list[0].id))
+        }
       }
     } catch (err) {
       console.error('Failed to fetch patients:', err)
@@ -93,7 +111,10 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
     }
   }
 
-  useEffect(() => { fetchPatients() }, [])
+  // Initial fetch on mount
+  useEffect(() => { 
+    fetchPatients(page) 
+  }, [page])
 
   // ── Reset consent when patient changes ──
   const handleSelectPatient = async (id) => {
@@ -217,22 +238,42 @@ export default function PatientPanel({ activePatientId, loggedInUser }) {
       <div className="card">
         <div className="card-body">
           <div className="section-label">Select patient</div>
+          
+          <div className="flex gap-2 mb-2 items-center flex-wrap">
+            <input 
+              type="text" 
+              placeholder="Search by name or ABHA..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && fetchPatients(1)}
+              className="flex-1 min-w-[200px] px-3.5 py-2 border border-[#21262d] rounded-lg text-[13px] outline-none bg-[#0d1117] text-[#e2e8f0]"
+            />
+            <button onClick={() => { setPage(1); fetchPatients(1); }} className="btn btn-outline text-[12px] py-1.5">Search</button>
+          </div>
+
           <div className="flex gap-2 items-center flex-wrap">
             {patientsLoading ? (
               <span className="text-[13px] text-[#484f58]">Loading patients…</span>
             ) : (
-              <select
-                value={selectedId}
-                onChange={(e) => handleSelectPatient(e.target.value)}
-                className="flex-1 px-3.5 py-2.5 border border-[#21262d] rounded-lg text-[14px] outline-none
-                           bg-[#0d1117] text-[#e2e8f0]
-                           focus:border-[#378ADD] focus:ring-2 focus:ring-[#378ADD]/20 transition-all"
-              >
-                {patients.length === 0 && <option value="">No patients found</option>}
-                {patients.map((p) => (
-                  <option key={p.id} value={String(p.id)}>{p.name} — {p.abha_id || 'No ABHA'}</option>
-                ))}
-              </select>
+              <>
+                <select
+                  value={selectedId}
+                  onChange={(e) => handleSelectPatient(e.target.value)}
+                  className="flex-1 px-3.5 py-2.5 border border-[#21262d] rounded-lg text-[14px] outline-none
+                             bg-[#0d1117] text-[#e2e8f0]
+                             focus:border-[#378ADD] focus:ring-2 focus:ring-[#378ADD]/20 transition-all"
+                >
+                  {patients.length === 0 && <option value="">No patients found</option>}
+                  {patients.map((p) => (
+                    <option key={p.id} value={String(p.id)}>{p.name} — {p.abha_id || 'No ABHA'}</option>
+                  ))}
+                </select>
+                <div className="flex bg-[#0d1117] border border-[#21262d] rounded-lg overflow-hidden ml-1 h-full">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 hover:bg-[#21262d] disabled:opacity-50 text-[#8b949e]">{"<"}</button>
+                  <div className="px-3 py-2 text-[13px] text-[#484f58] min-w-[2.5rem] text-center border-x border-[#21262d]">{page}</div>
+                  <button onClick={() => setPage(p => p + 1)} disabled={patients.length < 20} className="px-3 hover:bg-[#21262d] disabled:opacity-50 text-[#8b949e]">{">"}</button>
+                </div>
+              </>
             )}
           </div>
         </div>

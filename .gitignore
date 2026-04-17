@@ -1,0 +1,12 @@
+backend/ml/
+backend/dataset.csv
+backend/medicines_cleaned.csv
+backend/generate_data_67.py
+backend/seed_demo.py
+backend/pharmgkb_data
+*.sql
+backend/*.md
+*.db
+ABDM_plan.md
+DEPLOYMENT.md
+PROJECT_REHAUL.md

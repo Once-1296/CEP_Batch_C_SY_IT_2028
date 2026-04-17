@@ -1,3 +1,4 @@
+from unittest.mock import patch, MagicMock
 def test_unauthenticated_api_patients(client):
     """Endpoints requiring JWT should throw 401 when none is provided"""
     response = client.get("/api/patients")
@@ -28,3 +29,25 @@ def test_check_drug_with_bad_jwt(client):
 # NOTE: Testing full success routes (200 OK) requires a dedicated testing database
 # for Supabase to mock patient fetching and ABDM mock records.
 # For now, we verify that the boundaries and middleware are correctly guarding the routes.
+
+def test_api_patients_pagination_params(client):
+    """Pagination query params should be correctly parsed by FastAPI"""
+    response = client.get("/api/patients?page=2&limit=5&search=foo")
+    # Should be 401 since no auth is passed, but NOT 422 (validation error)
+    assert response.status_code == 401
+
+def test_api_patients_bad_pagination(client):
+    """Providing wrong data types for page/limit should return 422"""
+    # Patch the controller's get_supabase or the middleware's user check
+    # to bypass 401 and reach the parameter validation/conversion logic.
+    with patch("app.middleware.auth.get_supabase") as mock_get:
+        mock_db = MagicMock()
+        mock_get.return_value = mock_db
+        # Mock finding an admin user so auth middleware passes
+        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [{"id": "1", "username": "testadmin"}]
+        
+        response = client.get(
+            "/api/patients?page=abc", 
+            headers={"Authorization": "Bearer fake-jwt-testadmin"}
+        )
+        assert response.status_code == 422

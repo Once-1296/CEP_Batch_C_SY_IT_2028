@@ -11,11 +11,11 @@ from app.controllers.schema import (
 router = APIRouter()
 
 @router.get("/api/patients")
-async def list_patients_route(request: Request):
+async def list_patients_route(request: Request, page: int = 1, limit: int = 20, search: str = None):
     user = getattr(request.state, "user", None)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    return await list_patients(user)
+    return await list_patients(user, page, limit, search)
 
 @router.post("/api/patients")
 async def create_patient_route(req: CreatePatientRequest):

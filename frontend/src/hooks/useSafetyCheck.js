@@ -3,7 +3,6 @@ import { useState, useCallback } from 'react'
 // ── FastAPI backend URL ───────────────────────────────────────────────────────
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
-const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /**
  * useSafetyCheck
@@ -30,38 +29,9 @@ export function useSafetyCheck() {
     setApiError(null)
     setShowSteps(true)
 
-    const FRONTEND_STEPS = [
-      'Input normalization & error correction',
-      'Brand-to-generic mapping',
-      'Patient record retrieval',
-      'ML model classification',
-      'Risk output'
-    ]
-    setSteps(FRONTEND_STEPS.map(() => 'wait'))
+    setSteps(['active'])
     setLoading(true)
-
-    const updateStep = (i, state) =>
-      setSteps((prev) => prev.map((s, idx) => (idx === i ? state : s)))
-
-    // Animate first 4 steps while API call is in flight
-    const stepMsgs = [
-      'Normalizing input with SciSpacy NLP…',
-      'Mapping brand to generic salt via FuzzyWuzzy…',
-      'Retrieving patient data from Supabase…',
-      'Running ML model classification (predict_proba)…',
-    ]
-
-    // Animate steps 0-3 with delays
-    for (let i = 0; i < 4; i++) {
-      setLoadingMsg(stepMsgs[i])
-      updateStep(i, 'active')
-      await delay(400)
-      updateStep(i, 'done')
-    }
-
-    // Step 4 — actual API call happens here
-    setLoadingMsg('Stratifying risk & preparing output…')
-    updateStep(4, 'active')
+    setLoadingMsg('Querying Evidence Database...')
 
     try {
       const savedUser = localStorage.getItem('ag_user')
@@ -86,7 +56,7 @@ export function useSafetyCheck() {
       }
 
       const data = await response.json()
-      updateStep(4, 'done')
+      setSteps(['done'])
       setLoading(false)
 
       // Map backend severity_tier → frontend severity
@@ -97,21 +67,16 @@ export function useSafetyCheck() {
       }
 
       setResult({
-        // resolved drug info from backend
         drug: {
-          brand: data.resolved_data?.brand_matched || rawInput,
-          salt: data.resolved_data?.generic_salt || 'Unknown',
-          cat: data.resolved_data?.therapeutic_class || 'Unknown',
-          score: data.resolved_data?.match_score || 0,
+          brand: rawInput,
+          salt: (data.resolved_salts && data.resolved_salts.length > 0) ? data.resolved_salts.join(', ') : 'Unknown',
         },
         severity: severityMap[data.severity_tier] || 'safe',
         message: data.message,
         riskProbability: data.risk_probability || 0,
-        mlDetails: data.ml_details || [],
         substitute: data.suggested_alternative
           ? { name: data.suggested_alternative, brands: data.suggested_alternative, reason: data.message }
           : null,
-        // raw backend response for debugging
         raw: data,
       })
 

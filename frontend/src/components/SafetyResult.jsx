@@ -49,11 +49,15 @@ export default function SafetyResult({ result }) {
       <div className="card-head">
         <div>
           <div className="text-[15px] font-bold text-[#e2e8f0]">{drug.brand}</div>
-          <div className="text-[12px] text-[#8b949e] mt-0.5">
-            Generic salt: <span className="text-[#e2e8f0] font-medium">{drug.salt}</span>
-            &nbsp;|&nbsp;{drug.cat}
-            {drug.score > 0 && (
-              <span className="ml-2 text-[#484f58]">(match confidence: {drug.score}%)</span>
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {drug.salt && drug.salt !== 'Unknown' ? (
+              drug.salt.split(', ').map((s, idx) => (
+                <span key={idx} className="px-2 py-0.5 bg-[#21262d] text-[#e2e8f0] text-[11px] rounded uppercase font-medium tracking-wide">
+                  {s}
+                </span>
+              ))
+            ) : (
+              <span className="text-[#8b949e] text-[12px]">Unknown Salt</span>
             )}
           </div>
         </div>
@@ -66,7 +70,7 @@ export default function SafetyResult({ result }) {
         <div className="bg-[#0d1117] border border-[#21262d] rounded-xl p-4 mb-3">
           <div className="flex items-center justify-between mb-2">
             <div className="text-[11px] font-bold text-[#484f58] uppercase tracking-widest">
-              ML Risk Probability
+              Evidence Severity Score
             </div>
             <span className={`text-[18px] font-bold ${riskColor}`}>
               {riskPercent}%
@@ -79,13 +83,17 @@ export default function SafetyResult({ result }) {
             />
           </div>
           <div className="text-[10px] text-[#484f58] mt-1.5">
-            ML confidence based on patient's active medications, conditions, and allergies
+            Based on active medications, conditions, allergies, and genomic markers
           </div>
         </div>
 
         {/* Main alert from backend message */}
         <AlertBox variant={alertVariant} title={alertTitle}>
-          {message}
+          <ul className="list-disc list-outside ml-4 space-y-1">
+            {message ? message.split('|').map(m => m.trim()).filter(Boolean).map((alertItem, idx) => (
+              <li key={idx} className="leading-relaxed">{alertItem}</li>
+            )) : <li>No details provided.</li>}
+          </ul>
         </AlertBox>
 
         {/* Safer alternative if backend returned one */}
@@ -103,26 +111,7 @@ export default function SafetyResult({ result }) {
           </div>
         )}
 
-        {/* ML Details breakdown */}
-        {mlDetails.length > 0 && (
-          <details className="mt-3">
-            <summary className="text-[11px] text-[#484f58] cursor-pointer hover:text-[#8b949e] transition-colors">
-              View ML risk breakdown ({mlDetails.length} items checked)
-            </summary>
-            <div className="mt-2 bg-[#0d1117] border border-[#21262d] rounded-lg p-3 space-y-1.5">
-              {mlDetails.map((d, i) => {
-                const pct = Math.round(d.probability * 1000) / 10
-                const color = pct >= 75 ? 'text-red-400' : pct >= 40 ? 'text-amber-400' : 'text-emerald-400'
-                return (
-                  <div key={i} className="flex items-center justify-between text-[11px]">
-                    <span className="text-[#8b949e] truncate mr-3">{d.item}</span>
-                    <span className={`font-mono font-bold ${color}`}>{pct}%</span>
-                  </div>
-                )
-              })}
-            </div>
-          </details>
-        )}
+
 
         {/* Raw backend response for transparency */}
         <details className="mt-3">

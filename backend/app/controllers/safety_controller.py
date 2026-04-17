@@ -1,190 +1,115 @@
+import json
 from fastapi import HTTPException
-
 from app.config.supabase import get_supabase
-from app.nlp.normalizer import normalize_input
-from app.nlp.resolver import resolve_entity
-from app.nlp.cdss import predict_risk
 from app.controllers.schema import DrugCheckRequest
 
+# Load Pre-processed Deterministic Maps
+# (In production, these would be cached in Redis or loaded on app startup)
+def load_json_map(filepath):
+    try:
+        with open(filepath, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {} # Fallback if not generated yet
+
+BRAND_MAP = load_json_map("data/brand_to_salt.json")
+DDI_MAP = load_json_map("data/ddi_map.json")
+CLINICAL_MAP = load_json_map("data/clinical_map.json")
 
 async def check_drug_safety(req: DrugCheckRequest):
     supabase = get_supabase()
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
+    if not supabase: raise HTTPException(status_code=500, detail="Supabase not configured")
 
-    # 1. Validate patient exists
-    patient_res = supabase.table("patients").select(
-        "id, name, abha_id"
-    ).eq("id", req.patient_id).execute()
+    # 1. Fetch Patient
+    patient_res = supabase.table("patients").select("id, name, abha_id").eq("id", req.patient_id).execute()
+    if not patient_res.data: raise HTTPException(status_code=404, detail="Patient not found")
+    abha_id = req.abha_id or patient_res.data[0].get("abha_id")
 
-    if not patient_res.data or len(patient_res.data) == 0:
-        raise HTTPException(status_code=404, detail="Patient not found")
+    # 2. Resolve Drug Deterministically (Brand -> Salts)
+    query = req.pharmacist_query.lower().strip()
+    target_salts = BRAND_MAP.get(query, [query]) # E.g., "augmentin" -> ["amoxycillin", "clavulanic acid"]
 
-    patient = patient_res.data[0]
-    abha_id = req.abha_id or patient.get("abha_id")
+    # 3. Fetch ABDM Profile
+    abdm_res = supabase.table("abdm_mock_records").select("*").eq("abha_id", abha_id).execute()
+    record = abdm_res.data[0] if abdm_res.data else {}
+    
+    active_meds = [m.get("medication_name", "").lower() for m in record.get("medication_history", []) if m.get("status") in ["active", "current"]]
+    conditions = [c.get("condition", "").lower() for c in record.get("pre_existing_conditions", [])]
+    allergies = [a.get("allergen", "").lower() for a in record.get("allergies", [])]
+    genotypes = record.get("basic_health_details", {}).get("genotype_markers", {})
 
-    # 2. NLP: normalize + resolve to generic salt
-    clean_query = normalize_input(req.pharmacist_query)
-    resolved_drug = resolve_entity(clean_query)
+    highest_risk_score = 0.0
+    alerts = []
+    severity_tier = "Green"
 
-    if not resolved_drug:
-        return {"status": "error", "message": "Could not confidently identify the medicine."}
+    # 4. DIRECT ALLERGIES (Score: 0.99)
+    for salt in target_salts:
+        for allergy in allergies:
+            if salt in allergy or allergy in salt:
+                return compile_response("Red", 0.99, f"CRITICAL: Patient has explicit allergy to {salt.title()}.", target_salts)
 
-    target_salt = resolved_drug["generic_salt"]
+    # 5. DDI (DRUG-DRUG INTERACTIONS) (Score: 0.85)
+    for salt in target_salts:
+        if salt in DDI_MAP:
+            for med in active_meds:
+                if med in DDI_MAP[salt]:
+                    alerts.append(f"DDI Alert ({salt.title()} + {med.title()}): {DDI_MAP[salt][med]}")
+                    highest_risk_score = max(highest_risk_score, 0.85)
 
-    # 3. Fetch patient medical data from abdm_mock_records
-    abdm_res = supabase.table("abdm_mock_records").select(
-        "medication_history, pre_existing_conditions, allergies"
-    ).eq("abha_id", abha_id).execute()
+    # 6. CLINICAL & GENOMIC CONDITIONS (Score: 0.70 - 0.95)
+    for salt in target_salts:
+        if salt in CLINICAL_MAP:
+            # Check diseases
+            for condition in conditions:
+                if condition in CLINICAL_MAP[salt]:
+                    alerts.append(f"Clinical Risk ({salt.title()} vs {condition.title()}): {CLINICAL_MAP[salt][condition]['warning']}")
+                    highest_risk_score = max(highest_risk_score, 0.75)
+            
+            # Check Genotypes explicitly mapped in CLINICAL_MAP
+            for marker, patient_allele in genotypes.items():
+                if marker in CLINICAL_MAP[salt] and patient_allele in CLINICAL_MAP[salt][marker]:
+                    alerts.append(f"Genomic Alert (Marker {marker} - {patient_allele}): {CLINICAL_MAP[salt][marker][patient_allele]}")
+                    highest_risk_score = max(highest_risk_score, 0.95)
 
-    active_items = []
-
-    if abdm_res.data and len(abdm_res.data) > 0:
-        record = abdm_res.data[0]
-
-        # Extract active medications
-        meds = record.get("medication_history", []) or []
-        for m in meds:
-            if isinstance(m, dict):
-                status = (m.get("status", "") or "").lower()
-                time_period = (m.get("time_period", "") or "").lower()
-                if status in ["active", "current"] or time_period in ["active", "current"]:
-                    med_name = m.get("medication_name", "")
-                    if med_name:
-                        active_items.append(med_name)
-            elif isinstance(m, str) and m:
-                active_items.append(m)
-
-        # Extract pre-existing conditions
-        conditions = record.get("pre_existing_conditions", []) or []
-        for c in conditions:
-            if isinstance(c, dict):
-                condition = c.get("condition", "")
-                if condition:
-                    active_items.append(condition)
-            elif isinstance(c, str) and c:
-                active_items.append(c)
-
-        # Extract allergies
-        allergies = record.get("allergies", []) or []
-        for a in allergies:
-            if isinstance(a, dict):
-                allergen = a.get("allergen", "")
-                if allergen:
-                    active_items.append(f"Allergy: {allergen}")
-            elif isinstance(a, str) and a:
-                active_items.append(f"Allergy: {a}")
-
-    # 4. ML Model: predict risk probability
-    ml_result = predict_risk(target_salt, active_items)
-    risk_prob = ml_result["risk_probability"]
-
-    # 5. Determine severity tier from probability
-    if risk_prob >= 0.75:
-        severity_tier = "Red"
-    elif risk_prob >= 0.40:
-        severity_tier = "Yellow"
-    else:
-        severity_tier = "Green"
-
-    # 6. Build response message
-    if severity_tier == "Red":
-        message = (
-            f"CRITICAL: Conflict detected between proposed '{target_salt}' and "
-            f"patient's '{ml_result['conflicting_item']}' "
-            f"({round(risk_prob * 100, 1)}% risk probability)"
-        )
-        suggested_alternative = "Consult a specialist for a safer alternative."
-    elif severity_tier == "Yellow":
-        message = (
-            f"MODERATE RISK: Potential interaction between '{target_salt}' and "
-            f"'{ml_result['conflicting_item']}' "
-            f"({round(risk_prob * 100, 1)}% risk probability). Verify before dispensing."
-        )
-        suggested_alternative = None
-    else:
-        message = "No adverse drug interactions or genetic conflict detected."
-        suggested_alternative = None
-
-    alert = {
-        "severity_tier": severity_tier,
-        "message": message,
-        "resolved_data": resolved_drug,
-        "suggested_alternative": suggested_alternative,
-        "risk_probability": risk_prob,
-        "ml_details": ml_result["details"],
-    }
-
-    # 7. Family History Risk Check (genetic/shared sensitivity)
-    if severity_tier == "Green":
-        relations = supabase.table("family_relationships").select(
-            "relative_id, relationship_type"
-        ).eq("patient_id", req.patient_id).execute().data or []
-
+    # 7. FAMILY GENOMIC INHERITANCE CHECK
+    if highest_risk_score < 0.80:
+        relations = supabase.table("family_relationships").select("relative_id, relationship_type").eq("patient_id", req.patient_id).execute().data or []
         for rel in relations:
-            rel_id = rel["relative_id"]
-            rel_type = rel["relationship_type"]
+            rel_patient = supabase.table("patients").select("abha_id, name").eq("id", rel["relative_id"]).execute().data
+            if not rel_patient: continue
+            
+            rel_abdm = supabase.table("abdm_mock_records").select("allergies, basic_health_details").eq("abha_id", rel_patient[0]["abha_id"]).execute().data
+            if not rel_abdm: continue
+            
+            # Check relative's genotypes
+            rel_genotypes = rel_abdm[0].get("basic_health_details", {}).get("genotype_markers", {})
+            for salt in target_salts:
+                if salt in CLINICAL_MAP:
+                    for marker, rel_allele in rel_genotypes.items():
+                        if marker in CLINICAL_MAP[salt] and rel_allele in CLINICAL_MAP[salt][marker]:
+                            alerts.append(f"Family Genomic Risk: Relative ({rel['relationship_type']}) has genetic marker {marker}-{rel_allele} causing adverse reaction to {salt.title()}.")
+                            highest_risk_score = max(highest_risk_score, 0.85)
+            
+            # Check relative's allergies
+            rel_allergies = [a.get("allergen", "").lower() for a in rel_abdm[0].get("allergies", [])]
+            for salt in target_salts:
+                for allergy in rel_allergies:
+                     if salt in allergy or allergy in salt:
+                        alerts.append(f"Family Allergy Risk: Relative ({rel['relationship_type']}) is allergic to {salt.title()}. Dispense with caution.")
+                        highest_risk_score = max(highest_risk_score, 0.60) # Yellow warning
 
-            # Get relative's abha_id
-            rel_patient = supabase.table("patients").select("abha_id, name").eq(
-                "id", rel_id
-            ).execute().data
+    # Determine Tier
+    if highest_risk_score >= 0.80: severity_tier = "Red"
+    elif highest_risk_score >= 0.50: severity_tier = "Yellow"
 
-            if not rel_patient:
-                continue
+    message = " | ".join(alerts) if alerts else "No adverse drug interactions or genetic conflicts detected based on current evidence."
+    return compile_response(severity_tier, highest_risk_score, message, target_salts)
 
-            rel_abha = rel_patient[0].get("abha_id")
-            rel_name = rel_patient[0].get("name", "Unknown")
-
-            if not rel_abha:
-                continue
-
-            # Fetch relative's ABDM records
-            rel_abdm = supabase.table("abdm_mock_records").select(
-                "pre_existing_conditions, allergies"
-            ).eq("abha_id", rel_abha).execute().data
-
-            if not rel_abdm:
-                continue
-
-            rel_record = rel_abdm[0]
-
-            # Check allergies of relative for matching salt
-            rel_allergies = rel_record.get("allergies", []) or []
-            for a in rel_allergies:
-                allergen = a.get("allergen", "") if isinstance(a, dict) else str(a)
-                if allergen and (
-                    target_salt.lower() in allergen.lower()
-                    or allergen.lower() in target_salt.lower()
-                ):
-                    return {
-                        "severity_tier": "Red",
-                        "message": (
-                            f"CRITICAL: Family risk detected. Relative ({rel_type}) "
-                            f"{rel_name} has a recorded sensitivity to {allergen}. "
-                            f"Use with extreme caution."
-                        ),
-                        "resolved_data": resolved_drug,
-                        "suggested_alternative": "Consult a specialist for genomic-appropriate alternatives.",
-                        "risk_probability": 0.95,
-                        "ml_details": ml_result["details"],
-                    }
-
-            # G6PD deficiency check
-            rel_conditions = rel_record.get("pre_existing_conditions", []) or []
-            conditions_str = str(rel_conditions).lower()
-            if "g6pd" in conditions_str and "aspirin" in target_salt.lower():
-                return {
-                    "severity_tier": "Red",
-                    "message": (
-                        f"CRITICAL: Family history of G6PD deficiency "
-                        f"({rel_type}: {rel_name}). Drugs like {target_salt} "
-                        f"may trigger hemolytic anemia in genetically predisposed individuals."
-                    ),
-                    "resolved_data": resolved_drug,
-                    "suggested_alternative": "Acetaminophen (Paracetamol) is generally safer.",
-                    "risk_probability": 0.90,
-                    "ml_details": ml_result["details"],
-                }
-
-    return alert
+def compile_response(tier, score, message, salts):
+    return {
+        "severity_tier": tier,
+        "risk_probability": score, # Kept for UI backwards compatibility (gauges/charts)
+        "message": message,
+        "resolved_salts": salts,
+        "suggested_alternative": "Consult physician for genomic/interaction-appropriate alternatives." if tier == "Red" else None
+    }

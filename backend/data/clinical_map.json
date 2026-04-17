@@ -1,0 +1,25 @@
+{
+    "aspirin": {
+        "g6pd deficiency": {
+            "warning": "Patients with G6PD deficiency are at high risk for acute hemolytic anemia if given Aspirin."
+        },
+        "rs1050828": {
+            "TT": "Deficient G6PD enzyme structure. Fatal risk of oxidative hemolysis."
+        }
+    },
+    "mercaptopurine": {
+        "rs4149056": {
+            "CC": "High risk for severe thiopurine-induced toxicity."
+        }
+    },
+    "ivacaftor": {
+        "rs75527207": {
+            "AA": "Patient has altered CFTR function, standard dosage efficacy is altered."
+        }
+    },
+    "warfarin": {
+        "rs1799853": {
+            "TT": "CYP2C9 poor metabolizer. Extremely high bleeding risk. Requires drastic dose reduction."
+        }
+    }
+}

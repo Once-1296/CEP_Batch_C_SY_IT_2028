@@ -15,8 +15,7 @@ from app.middleware.error_handler import register_error_handlers
 from app.middleware.logging import register_logging_middleware
 from app.middleware.request_context import register_request_context_middleware
 from app.middleware.transform import register_transform_middleware
-from app.nlp.pipeline import initialize_nlp_model
-from app.nlp.cdss import initialize_cdss_model
+
 from app.routes.abdm import router as abdm_router
 from app.routes.admin import router as admin_router
 from app.routes.auth import router as auth_router
@@ -52,13 +51,11 @@ async def shutdown_abdm():
 # DB Connection.
 initialize_supabase_clients()
 
-print("Loading datasets and models...")
+print("Loading datasets...")
 try:
 	initialize_csv_data()
-	initialize_nlp_model()
-	initialize_cdss_model()
 except Exception as e:
-	print(f"Startup Error: {e}. Did you run setup_data.py and download spaCy model?")
+	print(f"Startup Error: {e}. Did you run setup_data.py?")
 
 # Routing.
 app.include_router(auth_router)

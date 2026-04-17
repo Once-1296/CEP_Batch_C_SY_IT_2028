@@ -6,13 +6,9 @@ import { useSafetyCheck } from '../hooks/useSafetyCheck'
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 
-// Pipeline steps matching the new ML-based backend
+// Single-step deterministic pipeline
 const FRONTEND_STEPS = [
-  'Input normalization & error correction',
-  'Brand-to-generic mapping',
-  'Patient record retrieval',
-  'ML model classification',
-  'Risk output'
+  'Querying Evidence Database'
 ]
 
 function CustomPipelineSteps({ steps, loading, loadingMsg }) {
@@ -34,7 +30,7 @@ function CustomPipelineSteps({ steps, loading, loadingMsg }) {
         </div>
       )}
       <div className="text-[11px] font-bold text-[#484f58] uppercase tracking-widest mb-2">
-        Processing pipeline
+        Processing
       </div>
       <div className="flex flex-col gap-1">
         {FRONTEND_STEPS.map((label, i) => (
@@ -73,39 +69,46 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
   // Fetch patients from Supabase via GET /api/patients
   const [patients, setPatients]     = useState([])
   const [patientsLoading, setPatientsLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
+
+  const fetchPatients = async (currentPage = page) => {
+    setPatientsLoading(true)
+    try {
+      const savedUser = localStorage.getItem('ag_user')
+      const parsed = savedUser ? JSON.parse(savedUser) : null
+      const token = parsed ? parsed.token : ''
+      if (parsed) {
+        const maybeUser = parsed.user || parsed
+        setUserRole(maybeUser.role || '')
+        setUserId(String(maybeUser.id || ''))
+      }
+      
+      const queryParams = new URLSearchParams({ page: currentPage, limit: 20 })
+      if (search) queryParams.append('search', search)
+
+      const res = await fetch(`${API_BASE}/api/patients?${queryParams.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      const data = await res.json()
+      const list = data.patients || []
+      setPatients(list)
+      if (list.length > 0) {
+        setPatientId(String(list[0].id))
+        if (onPatientChange) onPatientChange(String(list[0].id))
+      }
+    } catch (err) {
+      console.error('Failed to fetch patients:', err)
+    } finally {
+      setPatientsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        const savedUser = localStorage.getItem('ag_user')
-        const parsed = savedUser ? JSON.parse(savedUser) : null
-        const token = parsed ? parsed.token : ''
-        if (parsed) {
-          const maybeUser = parsed.user || parsed
-          setUserRole(maybeUser.role || '')
-          setUserId(String(maybeUser.id || ''))
-        }
-        
-        const res = await fetch(`${API_BASE}/api/patients`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-        const data = await res.json()
-        const list = data.patients || []
-        setPatients(list)
-        if (list.length > 0) {
-          setPatientId(String(list[0].id))
-          if (onPatientChange) onPatientChange(String(list[0].id))
-        }
-      } catch (err) {
-        console.error('Failed to fetch patients:', err)
-      } finally {
-        setPatientsLoading(false)
-      }
-    }
-    fetchPatients()
-  }, [])
+    fetchPatients(page)
+  }, [page])
 
   // Pharmacist: request access to selected patient
   const handleRequestAccess = async () => {
@@ -179,24 +182,44 @@ export default function DashboardPanel({ onViewPatient, onPatientChange }) {
 
           {/* Patient selector */}
           <div className="section-label">Select patient</div>
+          
+          <div className="flex gap-2 mb-2 items-center flex-wrap">
+            <input 
+              type="text" 
+              placeholder="Search by name or ABHA..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && fetchPatients(1)}
+              className="flex-1 min-w-[200px] px-3.5 py-2 border border-[#21262d] rounded-lg text-[13px] outline-none bg-[#0d1117] text-[#e2e8f0]"
+            />
+            <button onClick={() => { setPage(1); fetchPatients(1); }} className="btn btn-outline text-[12px] py-1.5">Search</button>
+          </div>
+
           <div className="flex gap-2 mb-4 items-center flex-wrap">
             {patientsLoading ? (
               <span className="text-[13px] text-[#484f58]">Loading patients…</span>
             ) : (
-              <select
-                value={patientId}
-                onChange={(e) => handlePatientChange(e.target.value)}
-                className="px-3.5 py-2.5 border border-[#21262d] rounded-lg text-[14px] outline-none
-                           bg-[#0d1117] text-[#e2e8f0]
-                           focus:border-[#378ADD] focus:ring-2 focus:ring-[#378ADD]/20 transition-all"
-              >
-                {patients.length === 0 && <option value="">No patients found</option>}
-                {patients.map((p) => (
-                  <option key={p.id} value={String(p.id)}>
-                    {p.name} — {p.abha_id || 'No ABHA'}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  value={patientId}
+                  onChange={(e) => handlePatientChange(e.target.value)}
+                  className="px-3.5 py-2.5 border border-[#21262d] rounded-lg text-[14px] outline-none
+                             bg-[#0d1117] text-[#e2e8f0]
+                             focus:border-[#378ADD] focus:ring-2 focus:ring-[#378ADD]/20 transition-all"
+                >
+                  {patients.length === 0 && <option value="">No patients found</option>}
+                  {patients.map((p) => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p.name} — {p.abha_id || 'No ABHA'}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex bg-[#0d1117] border border-[#21262d] rounded-lg overflow-hidden ml-1 h-full">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 hover:bg-[#21262d] disabled:opacity-50 text-[#8b949e]">{"<"}</button>
+                  <div className="px-3 py-2 text-[13px] text-[#484f58] min-w-[2.5rem] text-center border-x border-[#21262d]">{page}</div>
+                  <button onClick={() => setPage(p => p + 1)} disabled={patients.length < 20} className="px-3 hover:bg-[#21262d] disabled:opacity-50 text-[#8b949e]">{">"}</button>
+                </div>
+              </>
             )}
             <div className="flex gap-2">
               <button onClick={onViewPatient} className="btn btn-blue whitespace-nowrap">
