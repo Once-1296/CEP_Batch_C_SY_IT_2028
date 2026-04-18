@@ -8,7 +8,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 
-CORS_ALLOW_ORIGINS = ["*","http://localhost:5173"]
+CORS_ALLOW_ORIGINS = ["*","http://localhost:5173","https://cep-batch-c-sy-it-2028.vercel.app/"]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = ["*"]
 CORS_ALLOW_HEADERS = ["*"]

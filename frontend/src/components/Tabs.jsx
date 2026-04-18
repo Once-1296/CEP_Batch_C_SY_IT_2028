@@ -1,9 +1,8 @@
 import React from 'react'
 
 const TABS = [
-  { id: 'dashboard',    label: 'Pharmacist Dashboard' },
-  { id: 'patient',      label: 'Patient Profile' },
-  { id: 'substitution', label: 'Safety Swap' },
+  { id: 'dashboard', label: 'Pharmacist Dashboard' },
+  { id: 'patient', label: 'Patient Profile' }
 ]
 
 export default function Tabs({ active, onChange }) {

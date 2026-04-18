@@ -3,7 +3,7 @@
 ## 1. Idea & Concept
 Ayush-Guard is a prototype **Clinical Decision Support System (CDSS)** specifically aimed at reconciling cross-disciplinary medication regimes (e.g., Allopathic and Ayurvedic medicines). The core problem it solves is adverse Drug-Drug Interactions (DDIs) and genetic sensitivity conflicts when a pharmacist attempts to dispense a new medicine without a holistic view of the patient's existing health profile.
 
-By integrating with the conceptual **ABDM (Ayushman Bharat Digital Mission)** framework, the platform extracts a patient's historical medical records—including active medications, diagnosed pre-existing conditions, and known allergies. A machine learning classification model then steps in to evaluate the safety of the proposed new drug against the patient's accumulated health profile.
+By integrating with the conceptual **ABDM (Ayushman Bharat Digital Mission)** framework, the platform extracts a patient's historical medical records—including active medications, diagnosed pre-existing conditions, and known allergies. A statically stored dataset (cleaned from multiple online datasets including DrugBank, PharmGKB,A-Z Indian medicines, etc.) then steps in to evaluate the safety of the proposed new drug against the patient's accumulated health profile.
 
 ## 2. Architecture: Frontend & Backend Division
 The project strongly separates concerns into a static UI layer and a heavy computational API layer.
@@ -17,12 +17,12 @@ The project strongly separates concerns into a static UI layer and a heavy compu
 - **Why Vite/React?** Provides highly responsive Single Page Application (SPA) mechanics, heavily stylized without page reloads.
 
 ### Backend (Python + FastAPI)
-- **Role:** NLP normalizations, ML probability scoring, and database interactions.
+- **Role:** Deterministic safety scoring, data mapping, and database management.
 - **Key Modules:**
-  - `app/nlp/cdss.py`: Loads the Scikit-learn `joblib` dump. Evaluates input arrays and calculates a maximum danger probability (`predict_proba`).
-  - `app/nlp/normalizer.py` & `resolver.py`: Cleans raw text using `spaCy` NLP and maps brand names to active generic salts using `fuzzywuzzy`.
-  - `app/controllers/*.py`: Handles the core business workflows (fetching ABDM JSON payloads, parsing nested conditions, merging family trees).
-- **Why FastAPI?** Unmatched async HTTP performance and robust dependency injection for machine learning data loading on startup.
+  - `app/controllers/safety_controller.py`: The core engine. Loads pre-processed JSON maps into memory and performs multi-stage safety checks (Allergies, DDI, Clinical, Genomic, and Family Inheritance).
+  - `app/controllers/abdm_controller.py`: Manages FHIR-like patient records and medication histories.
+  - `app/routes/*.py`: Clean API routing using FastAPI’s `APIRouter`.
+- **Why FastAPI?** Unmatched async HTTP performance and seamless integration with the deterministic data dictionaries.
 
 ---
 
@@ -35,16 +35,18 @@ We use **Supabase (PostgreSQL)** to represent our data layer.
 3. **`access_requests`**: Connects `patients` to `pharmacists` representing the consent framework (PENDING, ACCEPTED, REJECTED).
 4. **`family_relationships`**: Maps recursive patient IDs (e.g., Father to Son) to propagate genetic sensitivity warnings (e.g., G6PD Deficiency inheritance).
 
-### ML Training & Datasets (The `backend/ml/` Ecosystem)
-- We used datasets from **DrugBank** (standard DDIs) and **PharmGKB** (Level 1A genetic evidence linking drugs to adverse phenotypes).
-- `generate_data_67.py`: Procedurally generates 1000 synthetic `abdm_mock_records` representing the distribution of safe combinations alongside known DrugBank interactions (e.g., Warfarin + Aspirin) and genetic mismatches.
-- A `RandomForestClassifier` was trained on text features `"{Proposed Salt} | {Existing Medical Item}"`. Predicting $1$ means the combination was sourced from the hazardous pairs. 
-- The resulting tree (`cdss_model.joblib`) is queried by the backend via `predict_proba()` to yield percentage-based confidence bands.
+### Data Dictionary & ETL Pipeline (The `backend/ml/` Ecosystem)
+- **Source Data:** We leverage global standards from **DrugBank** (Drug-Drug Interactions), **PharmGKB** (Clinical/Genomic evidence), and a custom **Brand-to-Salt** dataset.
+- **`final_generate.py` (ETL Pipeline):** The "brain" of our data strategy. It ingests thousands of records from raw TSVs/CSVs and transforms them into three optimized, memory-resident JSON dictionaries:
+  - `brand_to_salt.json`: Maps common brand names (e.g., "Augmentin") to active ingredients.
+  - `ddi_map.json`: A bi-directional hash map of hazardous drug pairs.
+  - `clinical_map.json`: Maps drugs to contraindicated conditions and genomic markers (rsIDs).
+- **Demo Sync:** The pipeline injects explicit "Demo Guarantees" to ensure standard test cases (like Warfarin + Aspirin) always trigger predictable alerts for presentation.
 
 ---
 
 ## 4. Primary API Routes
-- `POST /api/check-drug`: Takes `pharmacist_query` and `abha_id`. Normalizes the drug string, pulls the `abdm_mock_records` via ABHA ID, vectors all active conditions against the proposed drug via the ML model, and outputs a `{"severity_tier": "Red", "risk_probability": 0.89}` payload.
+- `POST /api/check-drug`: Takes `pharmacist_query` and `abha_id`. Resolves the brand to its salt(s), cross-references the patient's ABDM profile (active meds, conditions, genotypes) against the JSON maps, and outputs a `{"severity_tier": "Red", "risk_probability": 0.89, "message": "..."}` payload.
 - `GET /api/patients`: Fetches all patients in the pharmacist's radius. Aggregates `abdm_mock_records` and family history inline only if `access_requests` registers an `"ACCEPTED"` state.
 - `POST /api/admin/upload-abdm-record`: The administrative entry point to write massive semi-structured clinical JSON dumps into the native database representing incoming FHIR bundles.
 

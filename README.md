@@ -1,78 +1,112 @@
-# Ayush-Guard — Full Project
+# 🛡️ Ayush-Guard: Clinical Decision Support System
 
-Point-of-Sale Clinical Decision Support System
-**B.Tech IT Community Engineering Project — VJTI Mumbai**
+**Ayush-Guard** is a sophisticated safety layer designed to reconcile cross-disciplinary medication regimes (e.g., Allopathic and Ayurvedic medicines). It prevents adverse Drug-Drug Interactions (DDIs) and genetic sensitivity conflicts by analyzing a patient's historical medical profile against proposed prescriptions.
 
-## Project Structure
+---
 
-```
-ayush-guard-full/
-├── backend/          # FastAPI Python backend
-│   ├── main.py
-│   ├── preprocess.py
-│   ├── medicines_cleaned.csv
-│   ├── mock_patients.json
-│   ├── mock_rules.json
-│   └── users.db
+## 🏗️ Project Structure
+
+```text
+.
+├── backend/                # Python + FastAPI Backend
+│   ├── app/                # Core application logic
+│   │   ├── controllers/    # Deterministic safety engine & business logic
+│   │   ├── routes/         # API endpoints
+│   │   └── config/         # Supabase & Auth configurations
+│   ├── ml/                 # Data Science & ETL Pipeline
+│   │   ├── final_generate.py # The ETL brain (converts DrugBank/PharmGKB to JSON)
+│   │   └── ...
+│   ├── data/               # Generated deterministic JSON maps
+│   └── main.py             # Server entry point
 │
-└── frontend/         # React + Tailwind CSS frontend
-    ├── src/
-    │   ├── components/
-    │   ├── hooks/
-    │   ├── data/
-    │   └── ...
-    └── ...
+├── frontend/               # React + Vite + Tailwind CSS
+│   ├── src/
+│   │   ├── components/     # UI Panels (Dashboard, Patient, Safety)
+│   │   ├── hooks/          # API interaction hooks
+│   │   └── ...
+│   └── ...
+│
+├── PROJECT_DOCS.md         # Detailed Architectural Documentation
+└── README.md               # Quick Start Guide
 ```
 
 ---
 
-## How to run
+## 🚀 Quick Start
 
-### Step 1 — Start the backend
+### 1. Backend Setup
 
-Open a terminal, go into the backend folder:
+1. **Navigate to backend**:
+   ```bash
+   cd backend
+   ```
 
-```bash
-cd backend
-pip install fastapi uvicorn pandas spacy fuzzywuzzy python-levenshtein
-python -m spacy download en_core_web_sm
-uvicorn main:app --reload
-```
+2. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-Backend will run on → http://localhost:8000
+3. **Configure Environment**:
+   Create a `.env` file in the `backend/` directory:
+   ```env
+   SUPABASE_URL=your_project_url
+   SUPABASE_KEY=your_anon_key
+   ```
 
----
+4. **Run the ETL Pipeline** (Critical):
+   Hydrate the safety maps from raw medical datasets:
+   ```bash
+   python ml/final_generate.py
+   ```
 
-### Step 2 — Start the frontend
-
-Open a **second terminal**, go into the frontend folder:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Frontend will run on → http://localhost:5173
-
----
-
-### Step 3 — Open in browser
-
-Go to **http://localhost:5173**
-
-- Sign up as a new pharmacist, then log in
-- Select a patient (Rajesh Kumar or Priya Sharma)
-- Type a medicine name and click "Run safety check"
+5. **Start the API Server**:
+   ```bash
+   uvicorn main:app --reload
+   ```
 
 ---
 
-## Demo medicines to try
+### 2. Frontend Setup
 
-| Medicine | Expected result |
-|---|---|
-| `Augmentin 625` | 🔴 Critical — DDI with Methotrexate (Rajesh Kumar) |
-| `Allegra 120mg` | 🔴 Critical — Kidney Disease contraindication (Rajesh Kumar) |
-| `Ascoril LS` | ✅ Safe (Rajesh Kumar) |
-| `Azithral 500` | ✅ Safe (Priya Sharma) |
-| `Ambroxol` | 🟡 Note — antibiotic interaction (Rajesh Kumar) |
+1. **Navigate to frontend**:
+   ```bash
+   cd frontend
+   ```
+
+2. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+
+3. **Start the Development Server**:
+   ```bash
+   npm run dev
+   ```
+
+---
+
+## 🧪 Demo Scenarios
+
+The system is seeded with specific "Demo Guarantees" to showcase its safety detection capabilities:
+
+| Scenario | Input | Expected Result |
+| :--- | :--- | :--- |
+| **Drug-Drug Interaction** | `Warfarin` (for patient on `Aspirin`) | 🔴 **Critical DDI**: Severe bleeding risk. |
+| **Genomic Risk** | `Aspirin` (for patient with `G6PD Deficiency`) | 🔴 **Critical Genomic**: Risk of acute hemolytic anemia. |
+| **Inherited Allergy** | `Amoxicillin` (for relative with Allergy) | 🟡 **Warning**: Family history of penicillin allergy. |
+| **Standard Check** | `Crocin` | ✅ **Safe**: No conflicts detected. |
+
+---
+
+## 🛠️ Technology Stack
+
+- **Frontend**: React 18, Vite, Tailwind CSS, Heroicons.
+- **Backend Architecture**: FastAPI, Pydantic, Python 3.9+.
+- **Database**: Supabase (PostgreSQL) with JSONB for ABDM mocking.
+- **Safety Engine**: Deterministic Mapping Engine powered by PharmGKB & DrugBank evidence.
+
+---
+
+## 📄 Documentation
+
+For a deep dive into the architecture, data strategy, and API specifications, please refer to [PROJECT_DOCS.md](PROJECT_DOCS.md) and[Project Report](Project_Report_AyushGuard.docx).
