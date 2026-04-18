@@ -109,5 +109,5 @@ The system is seeded with specific "Demo Guarantees" to showcase its safety dete
 
 ## 📄 Documentation
 
-For a deep dive into the architecture, data strategy, and API specifications, please refer to [PROJECT_DOCS.md](PROJECT_DOCS.md) and [Project Report](Project_Report_AyushGuard.docx).
+For a deep dive into the architecture, data strategy, and API specifications, please refer to [PROJECT_DOCS.md](PROJECT_DOCS.md) and [Project Report](Project_Report_AyushGuard.pdf).
 Detailed [Documentation](https://drive.google.com/drive/folders/14G9933bM-c0K5BHkjjlqcDbuzYYE_fAo?usp=drive_link) on Drive.
